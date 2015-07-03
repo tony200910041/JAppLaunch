@@ -1,0 +1,2 @@
+Main-Class: JAppLaunch
+SplashScreen-Image: SRC/Splash.gif
