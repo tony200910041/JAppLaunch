@@ -8,11 +8,11 @@ import javax.swing.filechooser.*;
 import java.util.*;
 import java.io.*;
 import sun.awt.shell.ShellFolder;
-import MyJava.GUI.*;
+import myjava.gui.*;
 
 public class JAppLaunch extends JFrame
 {
-	private static final float VERSION_NO = (float)1.2;
+	private static final float VERSION_NO = 1.3f;
 	private static final Font f13 = new Font("Microsoft Jhenghei", Font.PLAIN, 13);
 	private static final Border bord = new LineBorder(Color.BLACK, 1);
 	
@@ -59,15 +59,18 @@ public class JAppLaunch extends JFrame
 				UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel");
 				break;
 			}
+			UIManager.put("PopupMenu.background", Color.WHITE);
 		}
 		catch (Throwable ex)
 		{
 		}
 		SwingUtilities.invokeLater(new Runnable()
 		{
+			boolean isDone[] = new boolean[5];
 			@Override
 			public void run()
 			{
+				Arrays.fill(isDone, false);
 				w = new JAppLaunch("JAppLaunch " + VERSION_NO);				
 				(new SwingWorker<Void, Void>()
 				{
@@ -76,6 +79,13 @@ public class JAppLaunch extends JFrame
 					{
 						w.restoreChooser();
 						return null;
+					}
+					
+					@Override
+					public void done()
+					{
+						isDone[0] = true;
+						start();
 					}
 				}).execute();
 				
@@ -87,6 +97,13 @@ public class JAppLaunch extends JFrame
 						w.restoreTextField();
 						return null;
 					}
+					
+					@Override
+					public void done()
+					{
+						isDone[1] = true;
+						start();
+					}
 				}).execute();
 				
 				(new SwingWorker<Void, Void>()
@@ -97,6 +114,13 @@ public class JAppLaunch extends JFrame
 						w.restoreMenu();
 						return null;
 					}
+					
+					@Override
+					public void done()
+					{
+						isDone[2] = true;
+						start();
+					}
 				}).execute();
 				
 				(new SwingWorker<Void, Void>()
@@ -106,6 +130,13 @@ public class JAppLaunch extends JFrame
 					{
 						w.restoreDrag();
 						return null;
+					}
+					
+					@Override
+					public void done()
+					{
+						isDone[3] = true;
+						start();
 					}
 				}).execute();
 				
@@ -130,18 +161,31 @@ public class JAppLaunch extends JFrame
 						}
 						return null;
 					}
-				}).execute();
-				splash.close();
-				if (args.length == 1)
+					
+					@Override
+					public void done()
+					{
+						isDone[4] = true;
+						start();
+					}
+				}).execute();				
+			}			
+			private void start()
+			{
+				if (isDone[0]&&isDone[1]&&isDone[2]&&isDone[3]&&isDone[4])
 				{
-					if (!args[0].replace("/", "-").equals("-startup"))
+					splash.close();
+					if (args.length == 1)
+					{
+						if (!args[0].replace("/", "-").equals("-startup"))
+						{
+							w.setVisible(true);
+						}
+					}
+					else
 					{
 						w.setVisible(true);
 					}
-				}
-				else
-				{
-					w.setVisible(true);
 				}
 			}
 		});
@@ -155,7 +199,7 @@ public class JAppLaunch extends JFrame
 			MyAWTMenuItem item2 = new MyAWTMenuItem("Close", 2);
 			popup.add(item1);
 			popup.add(item2);
-			trayIcon = new TrayIcon((new ImageIcon(w.getClass().getResource("MyJava/SRC/APPICON.PNG"))).getImage(), "JAppLaunch " + VERSION_NO, popup);
+			trayIcon = new TrayIcon((new ImageIcon(w.getClass().getResource("myjava/SRC/APPICON.PNG"))).getImage(), "JAppLaunch " + VERSION_NO, popup);
 			trayIcon.setImageAutoSize(true);
 			trayIcon.addMouseListener(new MouseAdapter()
 			{
@@ -214,7 +258,7 @@ public class JAppLaunch extends JFrame
 		this.setSizeAndLocation();
 		try
 		{
-			this.setIconImage((new ImageIcon(getClass().getResource("MyJava/SRC/APPICON.PNG"))).getImage());
+			this.setIconImage((new ImageIcon(getClass().getResource("myjava/SRC/APPICON.PNG"))).getImage());
 		}
 		catch (Exception ex)
 		{
@@ -231,8 +275,7 @@ public class JAppLaunch extends JFrame
 		
 		gridPanel.setLayout(new GridLayout(2,4,5,5));
 		topPanel.add(gridPanel, BorderLayout.CENTER);
-		this.add(topPanel, BorderLayout.PAGE_START);
-		
+		this.add(topPanel, BorderLayout.PAGE_START);		
 		//load icon
 		try
 		{
@@ -242,9 +285,8 @@ public class JAppLaunch extends JFrame
 		{
 			Icon = true;
 		}
-		
-		restoreGrid();
 		load();
+		restoreGrid();
 		ToolTipManager.sharedInstance().setInitialDelay(150);
 	}
 	
@@ -306,6 +348,10 @@ public class JAppLaunch extends JFrame
 		menu1.add(new MyMenuItem("Enable/disable always on top", 7));
 		menu1.add(new MyMenuItem("Set Look and Feel", 8));
 		menu1.add(new MyMenuItem("Other settings", 9));
+		if (System.getProperty("os.name").toLowerCase().startsWith("win"))
+		{
+			menu1.add(new MyWindowsMenu());
+		}
 		menu1.add(new JSeparator());
 		menu1.add(new MyMenuItem("Close to tray", 4));
 		menu1.add(new MyMenuItem("Close", 5));
@@ -668,16 +714,24 @@ public class JAppLaunch extends JFrame
 									@Override
 									public void run()
 									{
-										JWindow window = new JWindow();
+										final JDialog window = new JDialog(w);
 										JLabel label = new JLabel("   Opening...   ");
 										label.setFont(f13);
+										window.setUndecorated(true);
 										window.getContentPane().setBackground(new Color(252,255,220));
 										window.getRootPane().setBorder(bord);
-										window.setLayout(new FlowLayout());
-										window.add(label, BorderLayout.CENTER);
+										window.setLayout(new FlowLayout(FlowLayout.CENTER));
+										window.add(label);
 										window.pack();
-										window.setLocationRelativeTo(w);
-										window.setAlwaysOnTop(true);
+										window.setLocationRelativeTo(w);										
+										window.addWindowListener(new WindowAdapter()
+										{
+											@Override
+											public void windowDeactivated(WindowEvent ev)
+											{
+												window.dispose();
+											}
+										});
 										window.setVisible(true);
 										try
 										{
@@ -948,6 +1002,104 @@ public class JAppLaunch extends JFrame
 		}
 	}
 	
+	class MyWindowsMenu extends JMenu
+	{
+		public MyWindowsMenu()
+		{
+			super("System utilities");
+			this.setFont(f13);
+			this.add(new MyPrivateMenuItem("Cancel all shutdown task(s)", 1));
+			this.add(new JSeparator());
+			this.add(new MyPrivateMenuItem("Registry editor", 2));
+			this.add(new MyPrivateMenuItem("Paint", 3));
+			this.add(new MyPrivateMenuItem("Clipboard", 4));
+			this.add(new MyPrivateMenuItem("Calculator", 5));
+			this.add(new MyPrivateMenuItem("Event viewer", 6));
+			this.add(new MyPrivateMenuItem("Control panel", 7));
+			this.add(new MyPrivateMenuItem("Task manager", 8));
+		}
+		
+		private class MyPrivateMenuItem extends JMenuItem implements MouseListener
+		{
+			private int x;
+			public MyPrivateMenuItem(String str, int x)
+			{
+				super(str);
+				this.setForeground(Color.BLACK);
+				this.setBackground(Color.WHITE);
+				this.setFont(f13);
+				this.x = x;
+				this.addMouseListener(this);
+			}
+			
+			@Override
+			public void mouseReleased(MouseEvent ev)
+			{
+				switch (this.x)
+				{
+					case 1:
+					TMP1 = "shutdown -a";
+					break;
+					
+					case 2:
+					TMP1 = "regedit";
+					break;
+					
+					case 3:
+					TMP1 = "mspaint";
+					break;
+					
+					case 4:
+					TMP1 = "clipbrd";
+					break;
+					
+					case 5:
+					TMP1 = "calc";
+					break;
+					
+					case 6:
+					TMP1 = "eventvwr";
+					break;
+					
+					case 7:
+					TMP1 = "control";
+					break;
+					
+					case 8:
+					TMP1 = "taskmgr";
+					break;
+				}
+				try
+				{
+					Runtime.getRuntime().exec(TMP1);
+				}
+				catch (Exception ex)
+				{
+				}
+			}
+			
+			@Override
+			public void mousePressed(MouseEvent ev)
+			{
+			}
+			
+			@Override
+			public void mouseClicked(MouseEvent ev)
+			{
+			}
+			
+			@Override
+			public void mouseEntered(MouseEvent ev)
+			{
+			}
+			
+			@Override
+			public void mouseExited(MouseEvent ev)
+			{
+			}
+		}
+	}
+	
 	class MyGrid extends JButton implements MouseListener
 	{
 		private int x;
@@ -1106,6 +1258,7 @@ public class JAppLaunch extends JFrame
 							File f = chooser.getSelectedFile();
 							writeConfig("Grid." + this.x, f.getPath());
 							this.setIcon(getIcon32(f));
+							setToolTipText(f.getName());
 						}
 					}
 					else

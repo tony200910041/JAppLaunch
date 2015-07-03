@@ -1,4 +1,4 @@
-package MyJava.GUI;
+package myjava.gui;
 
 import java.awt.Color;
 import java.awt.Font;
