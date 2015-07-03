@@ -4,18 +4,18 @@ import java.awt.datatransfer.*;
 import java.awt.dnd.*;
 import javax.swing.*;
 import javax.swing.border.*;
-import javax.swing.filechooser.*;
 import javax.swing.event.*;
 import java.util.*;
 import java.io.*;
 import java.lang.reflect.*;
 import myjava.gui.*;
 import myjava.gui.common.Resources;
+import static myjava.io.IconLoader.*;
 
 public class JAppLaunch extends JFrame implements Resources
 {
 	//constants
-	private static final String VERSION_NO = "1.5";
+	private static final String VERSION_NO = "1.6";
 	private static final Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
 	private static final int WIDTH = screenSize.width;
 	private static final int HEIGHT = screenSize.height;
@@ -25,13 +25,14 @@ public class JAppLaunch extends JFrame implements Resources
 	private static final Properties prop = new Properties();
 	//component
 	private final JTabbedPane tPane = new JTabbedPane();
+	private final JPanel topPanel = new JPanel();
 	private final JPanel gridPanel = new JPanel();
 	private final JMenuBar menuBar = new JMenuBar();
 	private final JTextField searchBar = new JTextField();	
-	private final HashSet<String> tabNames = new HashSet<>();
-	private static MyWhiteFileChooser chooser = MyWhiteFileChooser.getInstance();
+	private final HashSet<String> tabNames = new HashSet<>();	
 	private boolean confirmDrag = true;
 	private boolean showIcon = true;
+	private static MyWhiteFileChooser chooser = MyWhiteFileChooser.getInstance();
 	private static JAppLaunch w;
 	//tray
 	private static final boolean useTray = SystemTray.isSupported();
@@ -117,6 +118,7 @@ public class JAppLaunch extends JFrame implements Resources
 				writeConfig0("Settings.isPortable", "false");
 				writeConfig0("Settings.isLoadIcon", "true");
 				writeConfig0("Settings.isCloseAfterLaunch", "true");
+				writeConfig0("Settings.showGridPane", "true");
 				saveConfig();
 			}
 			catch (Exception ex)
@@ -126,6 +128,10 @@ public class JAppLaunch extends JFrame implements Resources
 		else
 		{
 			loadConfig();
+			if (!prop.containsKey("Settings.showGridPane"))
+			{
+				writeConfig0("Settings.showGridPane", "true");
+			}
 		}
 		UIManager.put("OptionPane.messageFont", f13);
 		UIManager.put("OptionPane.buttonFont", f13);
@@ -182,22 +188,40 @@ public class JAppLaunch extends JFrame implements Resources
 		this.setLayout(new BorderLayout());
 		this.add(tPane, BorderLayout.CENTER);		
 		//top panel
-		JPanel topPanel = new JPanel();
 		topPanel.setLayout(new BorderLayout());
 		topPanel.add(searchBar, BorderLayout.PAGE_START);
 		//grid panel
 		gridPanel.setLayout(new GridLayout(2,4,5,5));
-		topPanel.add(gridPanel, BorderLayout.CENTER);
+		if (getBoolean0("Settings.showGridPane"))
+		{
+			topPanel.add(gridPanel, BorderLayout.CENTER);
+		}
 		this.add(topPanel, BorderLayout.PAGE_START);		
 		//load icon
 		showIcon = getBoolean0("Settings.isLoadIcon");
 		load();
 		restoreGrid();
+		//tabbedPane
+		tPane.setFont(f13);
+		tPane.addMouseListener(new MouseAdapter()
+		{
+			@Override
+			public void mouseReleased(MouseEvent ev)
+			{
+				int index = tPane.indexAtLocation(ev.getX(), ev.getY());
+				if (index != -1)
+				{
+					MyTab tab = (MyTab)(tPane.getComponentAt(index));
+					JPanel base = tab.getPanel();
+					MouseEvent me = SwingUtilities.convertMouseEvent(tPane,ev,base);
+					tab.mouseReleased(me);
+				}
+			}
+		});
 	}
 	
 	public void restoreChooser()
 	{
-		tPane.setFont(f13);
 		JComponent.setDefaultLocale(java.util.Locale.ENGLISH);
 	}
 	
@@ -274,6 +298,7 @@ public class JAppLaunch extends JFrame implements Resources
 		menu1.add(new MyStickMenu());
 		menu1.add(new MyMenuItem("Set Look and Feel", 8));
 		menu1.add(new MyMenuItem("Other settings", 9));
+		menu1.add(new MyMenuItem("Reload icons", 11));
 		if (System.getProperty("os.name").toLowerCase().startsWith("win"))
 		{
 			menu1.add(new MyWindowsMenu());
@@ -493,8 +518,7 @@ public class JAppLaunch extends JFrame implements Resources
 					setting.setModal(true);
 					setting.setTitle("Settings");
 					setting.getContentPane().setBackground(Color.WHITE);
-					setting.setLayout(new GridLayout(4,1,0,0));
-					setting.setSize(250,160);
+					setting.setLayout(new GridLayout(5,1,0,0));
 					setting.setLocationRelativeTo(w);
 					boolean Portable = getBoolean0("Settings.isPortable");
 					boolean CloseAfterLaunch = getBoolean0("Settings.isCloseAfterLaunch");
@@ -502,10 +526,14 @@ public class JAppLaunch extends JFrame implements Resources
 					MyCheckBox isPortable = new MyCheckBox("Replace drive letter", Portable);
 					MyCheckBox isLoadIcon = new MyCheckBox("Load icon", showIcon);
 					MyCheckBox isCloseAfterLaunch = new MyCheckBox("Hide window after launching", CloseAfterLaunch);
+					MyCheckBox showGridPane = new MyCheckBox("Show grids", getBoolean0("Settings.showGridPane"));
 					setting.add(isConfirmDrag);
 					setting.add(isPortable);
 					setting.add(isLoadIcon);
 					setting.add(isCloseAfterLaunch);
+					setting.add(showGridPane);
+					setting.setSize(243,230);
+					setting.setLocationRelativeTo(w);
 					setting.setVisible(true);
 					//
 					confirmDrag = isConfirmDrag.isSelected();
@@ -515,12 +543,36 @@ public class JAppLaunch extends JFrame implements Resources
 					writeConfig0("Settings.isPortable", isPortable.isSelected() + "");
 					writeConfig0("Settings.isLoadIcon", showIcon + "");
 					writeConfig0("Settings.isCloseAfterLaunch", isCloseAfterLaunch.isSelected() + "");
-					
+					boolean show = showGridPane.isSelected();
+					writeConfig0("Settings.showGridPane", show + "");
+					topPanel.remove(gridPanel);
+					if (show)
+					{
+						topPanel.add(gridPanel, BorderLayout.CENTER);
+					}
+					topPanel.revalidate();
+					topPanel.repaint();
 				}
 				break;
 				
 				case 10:
 				JAppLaunch.this.setVisible(!JAppLaunch.this.isVisible());
+				break;
+				
+				case 11: //reload icon
+				reloadCache();
+				for (Component c: gridPanel.getComponents())
+				{
+					if (c instanceof MyGrid)
+					{
+						((MyGrid)c).reloadIcon();
+					}
+				}
+				for (int i=0; i<tPane.getTabCount(); i++)
+				{
+					MyTab tab = (MyTab)(tPane.getComponentAt(i));
+					tab.list.sort();
+				}
 				break;
 			}
 			saveConfig();
@@ -738,7 +790,7 @@ public class JAppLaunch extends JFrame implements Resources
 			{
 				for (String item: l)
 				{
-					if (!item.endsWith("name"))
+					if ((!item.endsWith(".name"))&&(!item.endsWith(".parameters")))
 					{
 						try
 						{
@@ -848,6 +900,7 @@ public class JAppLaunch extends JFrame implements Resources
 		String tabName;
 		public MyTab(String tabName)
 		{
+			super();
 			this.setLayout(new BorderLayout());
 			this.setBackground(Color.WHITE);
 			this.setDropTarget(new MyDropTarget());
@@ -876,7 +929,7 @@ public class JAppLaunch extends JFrame implements Resources
 			{
 				if (ev.isPopupTrigger())
 				{					
-					this.popup.show(base,ev.getX(),ev.getY());					
+					this.popup.show((Component)src,ev.getX(),ev.getY());
 				}
 				else
 				{
@@ -886,7 +939,7 @@ public class JAppLaunch extends JFrame implements Resources
 					 */
 					if (ev.getClickCount() == 1)
 					{
-						MouseEvent me = SwingUtilities.convertMouseEvent(base,ev,tPane);
+						MouseEvent me = SwingUtilities.convertMouseEvent((JPanel)src,ev,tPane);
 						tPane.getMouseListeners()[0].mousePressed(me);
 					}
 					else
@@ -898,9 +951,32 @@ public class JAppLaunch extends JFrame implements Resources
 			}
 		}
 		
+		@Override
+		public void mouseEntered(MouseEvent ev)
+		{
+			Object src = ev.getSource();
+			if (src instanceof JPanel)
+			{
+				/*
+				 * adding MouseListener will disable tab swap
+				 * so implements it manually
+				 */
+				MouseEvent me = SwingUtilities.convertMouseEvent((JPanel)src,ev,tPane);
+				for (MouseListener listener: tPane.getMouseListeners())
+				{
+					listener.mouseEntered(me);
+				}
+			}
+		}
+		
 		public String getName()
 		{
 			return this.tabName;
+		}
+		
+		public JPanel getPanel()
+		{
+			return this.base;
 		}
 		
 		public void setName(String name)
@@ -1308,11 +1384,6 @@ public class JAppLaunch extends JFrame implements Resources
 		}
 		
 		@Override
-		public void mouseEntered(MouseEvent ev)
-		{
-		}
-		
-		@Override
 		public void mouseExited(MouseEvent ev)
 		{
 		}
@@ -1375,6 +1446,18 @@ public class JAppLaunch extends JFrame implements Resources
 				}
 			}
 			super.setToolTipText(tooltip);
+		}
+		
+		public void reloadIcon()
+		{
+			try
+			{
+				this.setIcon(getIcon32(new File(getConfig0("Grid." + this.x))));
+			}
+			catch (Exception ex)
+			{
+				this.setIcon(null);
+			}
 		}
 		
 		private class MyGridMenuItem extends JMenuItem implements ActionListener
@@ -1483,6 +1566,7 @@ public class JAppLaunch extends JFrame implements Resources
 		@Override
 		public void mouseReleased(MouseEvent ev)
 		{
+			loadConfig();
 			Object comp = ev.getSource();
 			if (comp instanceof JButton)
 			{
@@ -1516,32 +1600,31 @@ public class JAppLaunch extends JFrame implements Resources
 							launch(f);
 							final JButton button = (JButton)(ev.getSource());
 							//animation
-							(new Thread()
+							final javax.swing.Timer timer = new javax.swing.Timer(500, null);
+							ActionListener actionListener = new ActionListener()
 							{
+								private int i=0;
 								@Override
-								public void run()
+								public void actionPerformed(ActionEvent ev)
 								{
-									try
+									if (i != 6)
 									{
-										for (int i=0; i<3; i++)
+										button.setBackground(i%2==0?darkGreen:Color.WHITE);
+										i++;
+									}
+									else
+									{
+										button.setBackground(Color.WHITE);
+										timer.stop();
+										if (getBoolean0("Settings.isCloseAfterLaunch"))
 										{
-											this.sleep(500);
-											button.setBackground(darkGreen);
-											this.sleep(500);
-											button.setBackground(Color.WHITE);
-										}
-										if (getBoolean0("isCloseAfterLaunch"))
-										{
-											this.sleep(500);
 											JAppLaunch.this.setVisible(false);
 										}
 									}
-									catch (Throwable ex)
-									{
-										button.setBackground(Color.WHITE);
-									}
 								}
-							}).start();
+							};
+							timer.addActionListener(actionListener);
+							timer.start();
 						}
 						catch (Exception ex)
 						{
@@ -1573,6 +1656,23 @@ public class JAppLaunch extends JFrame implements Resources
 		{
 			this.setBackground(Color.WHITE);
 		}
+	}
+	
+	@Override
+	public void setVisible(boolean visible)
+	{
+		/*
+		 * save memory: minimize first
+		 */
+		if (visible&&(this.getExtendedState() != JFrame.NORMAL))
+		{
+			this.setExtendedState(JFrame.NORMAL);
+		}
+		else if ((!visible)&&(this.getExtendedState() != JFrame.ICONIFIED))
+		{
+			this.setExtendedState(JFrame.ICONIFIED);
+		}
+		super.setVisible(visible);
 	}
 	
 	public void saveSizeAndLocation()
@@ -1624,35 +1724,6 @@ public class JAppLaunch extends JFrame implements Resources
 		//
 		this.setAlwaysOnTop(getBoolean0("Settings.OnTop"));
 		confirmDrag = getBoolean0("Settings.ConfirmDrag");
-	}
-	
-	public static Icon getIcon32(File f)
-	{
-		try
-		{
-			/*
-			 * a hack using reflection
-			 * sun.awt.shell.ShellFolder is internal proprietary API
-			 * may be removed in a future release
-			 * may not be portable between different platform
-			 */
-			Class<?> c = Class.forName("sun.awt.shell.ShellFolder");
-			Method m1 = c.getDeclaredMethod("getShellFolder",File.class);
-			Object o1 = m1.invoke(null,f);
-			Method m2 = o1.getClass().getDeclaredMethod("getIcon",boolean.class);
-			m2.setAccessible(true);
-			Object o2 = m2.invoke(o1,true);
-			return new ImageIcon((Image)o2);
-		}
-		catch (Exception ex)
-		{
-			return getIcon16(f);
-		}
-	}
-	
-	public static Icon getIcon16(File f)
-	{
-		return FileSystemView.getFileSystemView().getSystemIcon(f);
 	}
 	
 	public static void openFile(File f) throws IOException
@@ -1738,7 +1809,7 @@ public class JAppLaunch extends JFrame implements Resources
 	
 	public static ImageIcon icon(String name)
 	{
-		return new ImageIcon(JAppLaunch.class.getResource("myjava/SRC/" + name + ".PNG"));
+		return new ImageIcon(JAppLaunch.class.getResource("/SRC/" + name + ".PNG"));
 	}
 	
 	public static Image img(String name)
