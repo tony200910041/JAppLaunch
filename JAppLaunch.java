@@ -12,7 +12,7 @@ import MyJava.GUI.*;
 
 public class JAppLaunch extends JFrame
 {
-	private static final float VERSION_NO = (float)1.1;
+	private static final float VERSION_NO = (float)1.2;
 	private static final Font f13 = new Font("Microsoft Jhenghei", Font.PLAIN, 13);
 	private static final Border bord = new LineBorder(Color.BLACK, 1);
 	
@@ -245,6 +245,7 @@ public class JAppLaunch extends JFrame
 		
 		restoreGrid();
 		load();
+		ToolTipManager.sharedInstance().setInitialDelay(150);
 	}
 	
 	public void restoreChooser()
@@ -785,7 +786,7 @@ public class JAppLaunch extends JFrame
 					break;
 					
 					case 6: //about
-					JOptionPane.showMessageDialog(w, "JAppLaunch " + VERSION_NO + " -- a file launcher written in Java.\nBy tony200910041, http://tony200910041.wordpress.com\nDistributed under MPL 2.0.", "About JAppLaunch", JOptionPane.INFORMATION_MESSAGE);
+					JOptionPane.showMessageDialog(w, "JAppLaunch " + VERSION_NO + " -- a file launcher written in Java.\nBy tony200910041, http://tony200910041.wordpress.com\nDistributed under MPL 2.0.\n\nOfficial website: http://japplaunch.sourceforge.net/", "About JAppLaunch", JOptionPane.INFORMATION_MESSAGE);
 					break;
 					
 					case 7: //always on top
@@ -951,7 +952,8 @@ public class JAppLaunch extends JFrame
 	{
 		private int x;
 		private final JPopupMenu popupMenu = new JPopupMenu();
-		private final JMenuItem item = new JMenuItem("Delete");
+		private final MyPrivateMenuItem item1 = new MyPrivateMenuItem("Delete", 1);
+		private final MyPrivateMenuItem item2 = new MyPrivateMenuItem("Set tooltip text", 2);
 		public MyGrid(int x)
 		{
 			this.setFont(f13);
@@ -961,8 +963,30 @@ public class JAppLaunch extends JFrame
 			this.setPreferredSize(new Dimension(50,50));
 			gridPanel.add(this);
 			this.addMouseListener(this);
+			item1.addMouseListener(this);
+			item2.addMouseListener(this);
 			this.x = x;
 			TMP1 = getConfig("Grid." + this.x);
+			try
+			{
+				TMP2 = getConfig("Grid." + this.x + ".name");
+				if (TMP2 == null) throw new Exception();
+			}
+			catch (Exception ex)
+			{
+				try
+				{
+					TMP2 = (new File(getConfig("Grid." + this.x))).getName();
+				}
+				catch (Exception ex2)
+				{
+					TMP2 = null;
+				}
+			}
+			finally
+			{
+				this.setToolTipText(TMP2);
+			}
 			if (TMP1 != null)
 			{
 				if (!TMP1.isEmpty())
@@ -976,11 +1000,61 @@ public class JAppLaunch extends JFrame
 					}
 				}
 			}
-			popupMenu.add(item);
-			item.setFont(f13);
-			item.setBackground(Color.WHITE);
-			item.addMouseListener(this);
 			this.setDropTarget(new MyDropTarget(this.x));
+		}
+		
+		@Override
+		public void setToolTipText(String str)
+		{
+			if (str != null)
+			{
+				if (str.isEmpty())
+				{
+					try
+					{
+						TMP1 = getConfig("Grid." + this.x + ".name");
+						if (TMP1 == null) throw new Exception();
+					}
+					catch (Exception ex)
+					{
+						try
+						{
+							TMP1 = (new File(getConfig("Grid." + this.x))).getName();
+						}
+						catch (Exception ex2)
+						{
+							TMP1 = null;
+						}
+					}
+					super.setToolTipText(TMP1);
+				}
+				else
+				{
+					super.setToolTipText(str);
+				}
+			}
+			else
+			{
+				super.setToolTipText(null);
+			}
+		}
+		
+		private class MyPrivateMenuItem extends JMenuItem
+		{
+			private int x;
+			public MyPrivateMenuItem(String str, int x)
+			{
+				super(str);
+				this.setFont(f13);
+				this.setBackground(Color.WHITE);
+				popupMenu.add(this);
+				this.x = x;
+			}
+			
+			int index()
+			{
+				return this.x;
+			}
 		}
 		
 		private class MyDropTarget extends DropTarget
@@ -1003,6 +1077,7 @@ public class JAppLaunch extends JFrame
 					{
 						writeConfig("Grid." + x, file.getPath());
 						setIcon(getIcon32(file));
+						setToolTipText(file.getName());
 					}
 				}
 				catch (Throwable ex)
@@ -1014,11 +1089,12 @@ public class JAppLaunch extends JFrame
 		@Override
 		public void mouseReleased(MouseEvent ev)
 		{
-			if (ev.getSource() instanceof JButton)
+			Object comp = ev.getSource();
+			if (comp instanceof JButton)
 			{
 				if (ev.isPopupTrigger())
 				{
-					popupMenu.show((JButton)(ev.getSource()), ev.getX(), ev.getY());
+					popupMenu.show((JButton)(comp), ev.getX(), ev.getY());
 				}
 				else
 				{
@@ -1072,10 +1148,55 @@ public class JAppLaunch extends JFrame
 					}
 				}
 			}
-			else if (ev.getSource() instanceof JMenuItem)
+			else if (comp instanceof MyPrivateMenuItem)
 			{
-				this.setIcon(null);
-				removeConfig("Grid." + this.x);
+				switch (((MyPrivateMenuItem)comp).index())
+				{
+					case 1:
+					this.setIcon(null);
+					removeConfig("Grid." + this.x);
+					removeConfig("Grid." + this.x + ".name");
+					this.setToolTipText(null);
+					break;
+					
+					case 2:
+					TMP2 = getConfig("Grid." + this.x + ".name");
+					if (TMP2 != null)
+					{
+						TMP1 = (String)(JOptionPane.showInputDialog(w, "Please enter the tooltip text:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, TMP2));
+					}
+					else
+					{
+						try
+						{
+							TMP1 = (String)(JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, (new File(getConfig("Grid." + this.x))).getName()));
+						}
+						catch (Exception ex)
+						{
+							TMP1 = JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE);
+						}
+					}
+					if (TMP1 != null)
+					{
+						if (TMP1.isEmpty())
+						{
+							removeConfig("Grid." + this.x + ".name");
+							try
+							{
+								this.setToolTipText((new File(getConfig("Grid." + this.x))).getName());
+							}
+							catch (Exception ex)
+							{
+							}
+						}
+						else
+						{
+							writeConfig("Grid." + this.x + ".name", TMP1);
+							this.setToolTipText(TMP1);
+						}
+					}
+					break;
+				}
 			}
 		}
 		
