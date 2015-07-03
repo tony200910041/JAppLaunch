@@ -5,51 +5,147 @@ import java.awt.dnd.*;
 import javax.swing.*;
 import javax.swing.border.*;
 import javax.swing.filechooser.*;
+import javax.swing.event.*;
 import java.util.*;
 import java.io.*;
-import sun.awt.shell.ShellFolder;
+import java.lang.reflect.*;
 import myjava.gui.*;
+import myjava.gui.common.Resources;
 
-public class JAppLaunch extends JFrame
+public class JAppLaunch extends JFrame implements Resources
 {
-	private static final float VERSION_NO = 1.3f;
-	private static final Font f13 = new Font("Microsoft Jhenghei", Font.PLAIN, 13);
-	private static final Border bord = new LineBorder(Color.BLACK, 1);
-	
-	private static final int WIDTH = (int)Toolkit.getDefaultToolkit().getScreenSize().getWidth();
-	private static final int HEIGHT = (int)Toolkit.getDefaultToolkit().getScreenSize().getHeight();
-	
-	private static final File SettingsFile = new File(getJARPath() + "\\JAPPLAUNCHPREFS.PROPERTIES");
+	//constants
+	private static final String VERSION_NO = "1.5";
+	private static final Dimension screenSize = Toolkit.getDefaultToolkit().getScreenSize();
+	private static final int WIDTH = screenSize.width;
+	private static final int HEIGHT = screenSize.height;
+	private static final Color darkGreen = new Color(1,125,129);
+	//settings
+	private static final File settingFile = new File(getJARPath(), "JAPPLAUNCHPREFS.PROPERTIES");
 	private static final Properties prop = new Properties();
-	
-	final JTabbedPane tPane = new JTabbedPane();
-	final JPanel gridPanel = new JPanel();
-	final JMenuBar menuBar = new JMenuBar();
-	final JTextField searchBar = new JTextField();
-	
-	final MyTab tab1 = new MyTab("Programs");
-	final MyTab tab2 = new MyTab("Files");
-	final MyTab tab3 = new MyTab("Others");
-	
-	static JAppLaunch w;
-	static MyFileChooser chooser;
-	static boolean confirmDrag = true;
-	static boolean Icon = true;
-	
-	static final boolean useTray = SystemTray.isSupported();
-	static final PopupMenu popup = new PopupMenu();
-	static TrayIcon trayIcon;
-	
-	static int i, j, k, l;
-	static String TMP1, TMP2, TMP3;
-	
+	//component
+	private final JTabbedPane tPane = new JTabbedPane();
+	private final JPanel gridPanel = new JPanel();
+	private final JMenuBar menuBar = new JMenuBar();
+	private final JTextField searchBar = new JTextField();	
+	private final HashSet<String> tabNames = new HashSet<>();
+	private static MyWhiteFileChooser chooser = MyWhiteFileChooser.getInstance();
+	private boolean confirmDrag = true;
+	private boolean showIcon = true;
+	private static JAppLaunch w;
+	//tray
+	private static final boolean useTray = SystemTray.isSupported();
+	private static JPopupMenu popup;
+	private static MyTrayIcon trayIcon;
+	//
 	public static void main(final String[] args)
 	{
 		final SplashScreen splash = SplashScreen.getSplashScreen();
 		splash.createGraphics();
+		SwingUtilities.invokeLater(new Runnable()
+		{
+			@Override
+			public void run()
+			{
+				JAppLaunch.initialize();
+				JAppLaunch.setLAF();
+				w = new JAppLaunch("JAppLaunch " + VERSION_NO);
+				Thread t1 = new Thread()
+				{
+					@Override
+					public void run()
+					{
+						w.restoreMenu();
+						w.restoreChooser();
+					}
+				};
+				t1.start();				
+				w.restoreTextField();
+				/*
+				 * load system tray
+				 */
+				if (useTray)
+				{
+					w.addIconToTray();
+				}
+				else
+				{
+					JOptionPane.showMessageDialog(w, "System tray is not supported!", "Error", JOptionPane.ERROR_MESSAGE);
+				}
+				try
+				{
+					t1.join();
+				}
+				catch (InterruptedException ex)
+				{
+					//pass
+				}
+				/*
+				 * done
+				 */
+				splash.close();
+				if (args.length == 1)
+				{
+					if (!args[0].replace("/", "-").equals("-startup"))
+					{
+						w.setVisible(true);
+					}
+				}
+				else
+				{
+					w.setVisible(true);
+				}
+			}
+		});
+	}
+	
+	public static void initialize()
+	{
+		if (!settingFile.exists())
+		{
+			try
+			{
+				PrintWriter writer = new PrintWriter(settingFile, "UTF-8");
+				writer.close();
+				writeConfig0("Settings.Size.x", "280");
+				writeConfig0("Settings.Size.y", "700");
+				writeConfig0("Settings.Location.x", "0");
+				writeConfig0("Settings.Location.y", "0");
+				writeConfig0("Settings.OnTop", "false");
+				writeConfig0("Settings.LAF", "Default");
+				writeConfig0("Settings.ConfirmDrag", "true");
+				writeConfig0("Settings.isPortable", "false");
+				writeConfig0("Settings.isLoadIcon", "true");
+				writeConfig0("Settings.isCloseAfterLaunch", "true");
+				saveConfig();
+			}
+			catch (Exception ex)
+			{
+			}
+		}
+		else
+		{
+			loadConfig();
+		}
+		UIManager.put("OptionPane.messageFont", f13);
+		UIManager.put("OptionPane.buttonFont", f13);
+		UIManager.put("OptionPane.yesButtonText", "YES");
+		UIManager.put("OptionPane.noButtonText", "NO");
+		UIManager.put("OptionPane.okButtonText", "OK");
+		UIManager.put("Button.background", Color.WHITE);		
+		UIManager.put("ToolTip.font", f13);
+		UIManager.put("TextField.font",f13);
+		UIManager.put("ToolTip.background", Color.WHITE);
+		UIManager.put("PopupMenu.background", Color.WHITE);
+		UIManager.put("ToolTip.border", bord1);
+		ToolTipManager.sharedInstance().setInitialDelay(150);
+	}
+	
+	public static void setLAF()
+	{
 		try
 		{
-			switch (getConfig("LAF"))
+			switch (getConfig0("Settings.LAF"))
 			{
 				case "Windows":
 				UIManager.setLookAndFeel("com.sun.java.swing.plaf.windows.WindowsLookAndFeel");
@@ -59,263 +155,91 @@ public class JAppLaunch extends JFrame
 				UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel");
 				break;
 			}
-			UIManager.put("PopupMenu.background", Color.WHITE);
 		}
-		catch (Throwable ex)
+		catch (Exception ex)
 		{
-		}
-		SwingUtilities.invokeLater(new Runnable()
-		{
-			boolean isDone[] = new boolean[5];
-			@Override
-			public void run()
-			{
-				Arrays.fill(isDone, false);
-				w = new JAppLaunch("JAppLaunch " + VERSION_NO);				
-				(new SwingWorker<Void, Void>()
-				{
-					@Override
-					public Void doInBackground()
-					{
-						w.restoreChooser();
-						return null;
-					}
-					
-					@Override
-					public void done()
-					{
-						isDone[0] = true;
-						start();
-					}
-				}).execute();
-				
-				(new SwingWorker<Void, Void>()
-				{
-					@Override
-					public Void doInBackground()
-					{
-						w.restoreTextField();
-						return null;
-					}
-					
-					@Override
-					public void done()
-					{
-						isDone[1] = true;
-						start();
-					}
-				}).execute();
-				
-				(new SwingWorker<Void, Void>()
-				{
-					@Override
-					public Void doInBackground()
-					{
-						w.restoreMenu();
-						return null;
-					}
-					
-					@Override
-					public void done()
-					{
-						isDone[2] = true;
-						start();
-					}
-				}).execute();
-				
-				(new SwingWorker<Void, Void>()
-				{
-					@Override
-					public Void doInBackground()
-					{
-						w.restoreDrag();
-						return null;
-					}
-					
-					@Override
-					public void done()
-					{
-						isDone[3] = true;
-						start();
-					}
-				}).execute();
-				
-				(new SwingWorker<Void, Void>()
-				{
-					@Override
-					public Void doInBackground()
-					{
-						if (useTray)
-						{
-							try
-							{
-								addIconToTray();
-							}
-							catch (Exception ex)
-							{
-							}
-						}
-						else
-						{
-							JOptionPane.showMessageDialog(w, "System tray is not supported!", "Error", JOptionPane.ERROR_MESSAGE);
-						}
-						return null;
-					}
-					
-					@Override
-					public void done()
-					{
-						isDone[4] = true;
-						start();
-					}
-				}).execute();				
-			}			
-			private void start()
-			{
-				if (isDone[0]&&isDone[1]&&isDone[2]&&isDone[3]&&isDone[4])
-				{
-					splash.close();
-					if (args.length == 1)
-					{
-						if (!args[0].replace("/", "-").equals("-startup"))
-						{
-							w.setVisible(true);
-						}
-					}
-					else
-					{
-						w.setVisible(true);
-					}
-				}
-			}
-		});
-	}
-	
-	public static void addIconToTray() throws AWTException
-	{		
-		if (useTray)
-		{
-			MyAWTMenuItem item1 = new MyAWTMenuItem("Show/Hide", 1);
-			MyAWTMenuItem item2 = new MyAWTMenuItem("Close", 2);
-			popup.add(item1);
-			popup.add(item2);
-			trayIcon = new TrayIcon((new ImageIcon(w.getClass().getResource("myjava/SRC/APPICON.PNG"))).getImage(), "JAppLaunch " + VERSION_NO, popup);
-			trayIcon.setImageAutoSize(true);
-			trayIcon.addMouseListener(new MouseAdapter()
-			{
-				@Override
-				public void mouseReleased(MouseEvent ev)
-				{
-					if (!ev.isPopupTrigger())
-					{
-						w.setVisible(!w.isVisible());
-					}
-				}
-			});
-			SystemTray.getSystemTray().add(trayIcon);
-		}
-	}
-	
-	static class MyAWTMenuItem extends MenuItem implements ActionListener
-	{
-		private int x;
-		public MyAWTMenuItem(String str, int x)
-		{
-			super(str);
-			this.setFont(JAppLaunch.f13);
-			this.addActionListener(this);
-			this.x = x;
-		}
-		
-		@Override
-		public void actionPerformed(ActionEvent ev)
-		{
-			switch (x)
-			{
-				//show/hide
-				case 1:
-				w.setVisible(!w.isVisible());
-				break;
-				
-				//close
-				case 2:
-				if (useTray)
-				{
-					SystemTray.getSystemTray().remove(trayIcon);
-				}
-				w.saveSizeAndLocation();
-				System.exit(0);
-				break;
-			}
 		}
 	}
 	
 	public JAppLaunch(String str)
 	{
-		super(str);		
-		this.initialize();		
+		super(str);	
 		this.setDefaultCloseOperation(JFrame.HIDE_ON_CLOSE);
 		this.setSizeAndLocation();
 		try
 		{
-			this.setIconImage((new ImageIcon(getClass().getResource("myjava/SRC/APPICON.PNG"))).getImage());
+			ArrayList<Image> img = new ArrayList<>();
+			img.add(img("APPICON128"));
+			img.add(img("APPICON48"));
+			img.add(img("APPICON32"));
+			img.add(img("APPICON16"));
+			this.setIconImages(img);
 		}
 		catch (Exception ex)
 		{
 		}
-		this.setLayout(new BorderLayout());
-		this.add(tPane, BorderLayout.CENTER);
-		
-		menuBar.setBackground(Color.WHITE);
 		this.setJMenuBar(menuBar);
-		
+		this.setLayout(new BorderLayout());
+		this.add(tPane, BorderLayout.CENTER);		
+		//top panel
 		JPanel topPanel = new JPanel();
 		topPanel.setLayout(new BorderLayout());
 		topPanel.add(searchBar, BorderLayout.PAGE_START);
-		
+		//grid panel
 		gridPanel.setLayout(new GridLayout(2,4,5,5));
 		topPanel.add(gridPanel, BorderLayout.CENTER);
 		this.add(topPanel, BorderLayout.PAGE_START);		
 		//load icon
-		try
-		{
-			Icon = !(getConfig("isLoadIcon").equals("false"));
-		}
-		catch (Exception ex)
-		{
-			Icon = true;
-		}
+		showIcon = getBoolean0("Settings.isLoadIcon");
 		load();
 		restoreGrid();
-		ToolTipManager.sharedInstance().setInitialDelay(150);
 	}
 	
 	public void restoreChooser()
 	{
 		tPane.setFont(f13);
 		JComponent.setDefaultLocale(java.util.Locale.ENGLISH);
-		chooser = new MyFileChooser("Please choose a file:");
 	}
 	
 	public void restoreTextField()
 	{
-		searchBar.setFont(f13);		
-		searchBar.addKeyListener(new KeyAdapter()
+		searchBar.setFont(f13);
+		searchBar.setPreferredSize(new Dimension(0,26));
+		searchBar.getDocument().addDocumentListener(new DocumentListener()
 		{
 			@Override
-			public void keyReleased(KeyEvent ev)
+			public void insertUpdate(DocumentEvent ev)
 			{
-				TMP1 = searchBar.getText();
+				update();
+			}
+			
+			@Override
+			public void changedUpdate(DocumentEvent ev)
+			{
+				update();
+			}
+			
+			@Override
+			public void removeUpdate(DocumentEvent ev)
+			{
+				update();
+			}
+			
+			public void update()
+			{
+				String text = searchBar.getText();
 				JList myList = ((MyTab)(tPane.getSelectedComponent())).list;
 				DefaultListModel model = (DefaultListModel)(myList.getModel());
-				j = model.size();
-				for (i=0; i<j; i++)
+				String tmp;
+				//start searching:
+				loadConfig();
+				for (int i=0; i<model.size(); i++)
 				{
-					if ((TMP2 = getConfig(model.getElementAt(i) + ".name")) == null)
+					if ((tmp = getConfig0(model.getElementAt(i) + ".name")) == null)
 					{
-						TMP2 = (new File(getConfig(model.getElementAt(i).toString()))).getName();
+						tmp = (new File(getConfig0(model.getElementAt(i).toString()))).getName();
 					}
-					if (TMP2.contains(TMP1))
+					if (tmp.contains(text))
 					{
 						myList.setSelectedIndex(i);
 						myList.ensureIndexIsVisible(i);
@@ -328,24 +252,26 @@ public class JAppLaunch extends JFrame
 	
 	public void restoreGrid()
 	{
-		MyGrid g1 = new MyGrid(1);
-		MyGrid g2 = new MyGrid(2);
-		MyGrid g3 = new MyGrid(3);
-		MyGrid g4 = new MyGrid(4);
-		MyGrid g5 = new MyGrid(5);
-		MyGrid g6 = new MyGrid(6);
-		MyGrid g7 = new MyGrid(7);
-		MyGrid g8 = new MyGrid(8);
+		gridPanel.add(new MyGrid(1));
+		gridPanel.add(new MyGrid(2));
+		gridPanel.add(new MyGrid(3));
+		gridPanel.add(new MyGrid(4));
+		gridPanel.add(new MyGrid(5));
+		gridPanel.add(new MyGrid(6));
+		gridPanel.add(new MyGrid(7));
+		gridPanel.add(new MyGrid(8));
 	}
 	
 	public void restoreMenu()
 	{
+		menuBar.setBackground(Color.WHITE);
+		menuBar.setBorderPainted(false);
 		MyMenu menu1 = new MyMenu("JAppLaunch");
-		menu1.add(new MyMenuItem("Add new item to Programs", 1));
-		menu1.add(new MyMenuItem("Add new item to Files", 2));
-		menu1.add(new MyMenuItem("Add new item to Others", 3));
+		menu1.add(new MyMenuItem("Add new item to current tab", 1));
+		menu1.add(new MyMenuItem("Add new tab", 2));
 		menu1.add(new JSeparator());
 		menu1.add(new MyMenuItem("Enable/disable always on top", 7));
+		menu1.add(new MyStickMenu());
 		menu1.add(new MyMenuItem("Set Look and Feel", 8));
 		menu1.add(new MyMenuItem("Other settings", 9));
 		if (System.getProperty("os.name").toLowerCase().startsWith("win"))
@@ -353,417 +279,43 @@ public class JAppLaunch extends JFrame
 			menu1.add(new MyWindowsMenu());
 		}
 		menu1.add(new JSeparator());
-		menu1.add(new MyMenuItem("Close to tray", 4));
+		if (useTray)
+		{
+			menu1.add(new MyMenuItem("Close to tray", 4));
+		}
 		menu1.add(new MyMenuItem("Close", 5));
-		
+		//
 		MyMenu menu2 = new MyMenu("About");
 		menu2.add(new MyMenuItem("About JAppLaunch", 6));
 	}
 	
-	public void restoreDrag()
+	public void addIconToTray()
 	{
-		tab1.list.setDropTarget(new MyDropTarget(1));
-		tab2.list.setDropTarget(new MyDropTarget(2));
-		tab3.list.setDropTarget(new MyDropTarget(3));
-	}
-	
-	class MyDropTarget extends DropTarget
-	{
-		private int x;
-		public MyDropTarget(int x)
+		if (useTray)
 		{
-			this.x = x;
-		}
-		
-		@Override
-		public synchronized void drop(DropTargetDropEvent dtde)
-		{
-			dtde.acceptDrop(DnDConstants.ACTION_COPY_OR_MOVE);
-			java.util.List list = null;
-			try
+			popup = new JPopupMenu();
+			trayIcon = new MyTrayIcon(img("APPICON48"), "JAppLaunch " + VERSION_NO, popup);
+			trayIcon.setImageAutoSize(true);
+			trayIcon.addMouseListener(new MouseAdapter()
 			{
-				list = (java.util.List)(dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor));
-			}
-			catch (Throwable ex)
-			{
-			}
-			for (Object obj: list)
-			{
-				if (obj instanceof File)
-				{
-					File file = (File)obj;
-					switch (x)
-					{
-						case 1:
-						if (confirmDrag)
-						{
-							i = JOptionPane.showConfirmDialog(w, "Add " + file.getPath() + " to Programs?", "Confirm", JOptionPane.YES_NO_OPTION);
-						}
-						if ((i == JOptionPane.YES_OPTION)||(!confirmDrag))
-						{
-							k = getNextUsable("Programs");
-							writeConfig("Programs." + k, file.getPath());
-							tab1.list.lm.addElement("Programs." + k);
-						}
-						break;
-						
-						case 2:
-						if (confirmDrag)
-						{
-							i = JOptionPane.showConfirmDialog(w, "Add " + file.getPath() + " to Files?", "Confirm", JOptionPane.YES_NO_OPTION);
-						}
-						if ((i == JOptionPane.YES_OPTION)||(!confirmDrag))
-						{
-							k = getNextUsable("Files");
-							writeConfig("Files." + k, file.getPath());
-							tab2.list.lm.addElement("Files." + k);
-						}
-						break;
-						
-						case 3:
-						if (confirmDrag)
-						{
-							i = JOptionPane.showConfirmDialog(w, "Add " + file.getPath() + " to Others?", "Confirm", JOptionPane.YES_NO_OPTION);
-						}
-						if ((i == JOptionPane.YES_OPTION)||(!confirmDrag))
-						{
-							k = getNextUsable("Others");
-							writeConfig("Others." + k, file.getPath());
-							tab3.list.lm.addElement("Others." + k);
-						}
-						break;
-					}
-				}
-			}
-		}
-	}
-	
-	public void load()
-	{
-		File path = getJARPath();
-		while (path.getParentFile() != null)
-		{
-			path = path.getParentFile();
-		}
-		TMP3 = getConfig("LastDrive");
-		//path = root
-		java.util.List list = Collections.list(prop.propertyNames());
-		Collections.sort(list, new Comparator<String>()
-		{
-			@Override
-			public int compare(String str1, String str2)
-			{
-				if ((TMP1 = getConfig(str1 + ".name")) == null)
-				{
-					TMP1 = (new File(getConfig(str1))).getName();
-				}
-				if ((TMP2 = getConfig(str2 + ".name")) == null)
-				{
-					TMP2 = (new File(getConfig(str2))).getName();
-				}
-				return TMP1.compareTo(TMP2);
-			}
-		});
-		for (Object item: list)
-		{
-			TMP1 = (String)item;
-			if (!TMP1.endsWith("name"))
-			{
-				try
-				{
-					if (getConfig("isPortable").equals("true"))
-					{
-						if (!path.getPath().equals(TMP3))
-						{
-							writeConfig(TMP1, getConfig(TMP1).replace(TMP3, path.getPath()));
-						}
-					}
-				}
-				catch (Throwable ex)
-				{
-				}
-				if (TMP1.startsWith("Programs"))
-				{
-					tab1.list.lm.addElement(TMP1);
-				}
-				else if (TMP1.startsWith("Files"))
-				{
-					tab2.list.lm.addElement(TMP1);
-				}
-				else if (TMP1.startsWith("Others"))
-				{
-					tab3.list.lm.addElement(TMP1);
-				}
-			}
-		}
-		writeConfig("LastDrive", path.getPath());
-	}
-	
-	class MyTab extends JPanel
-	{
-		final MyList list = new MyList();
-		public MyTab(String tabName)
-		{
-			this.setLayout(new BorderLayout());
-			this.setBackground(Color.WHITE);
-			tPane.addTab(tabName, null, this, null);
-			this.add(new JScrollPane(list), BorderLayout.CENTER);
-		}
-		
-		class MyList extends JList implements MouseListener
-		{
-			MyListModel lm = new MyListModel();
-			private final JPopupMenu popupMenu = new JPopupMenu();
-			final MyPrivateMenuItem item = new MyPrivateMenuItem("Delete", 1);
-			final MyPrivateMenuItem item2 = new MyPrivateMenuItem("Set preferred name", 2);
-			class MyListModel extends DefaultListModel
-			{
-				public MyListModel()
-				{
-					super();
-				}
-				
-				public void fireContentsChanged()
-				{
-					this.fireContentsChanged(list, 0, this.size());
-				}
-			};
-			
-			public MyList()
-			{
-				super();
-				final MyList list = this;
-				this.setModel(lm);
-				this.addMouseListener(this);
-				this.setDragEnabled(true);
-				this.setCellRenderer(new DefaultListCellRenderer()
-				{
-					@Override
-					public Component getListCellRendererComponent(JList list, Object value, int index, boolean isSelected, boolean cellHasFocus)
-					{
-						JLabel c = (JLabel)(super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus));
-						c.setFont(f13);
-						File file = new File(getConfig((String)value));
-						try
-						{
-							if (Icon)
-							{
-								c.setIcon(getIcon16(file));
-							}
-						}
-						catch (Throwable ex)
-						{
-						}
-						try
-						{
-							if ((TMP3 = getConfig(value + ".name")) != null)
-							{
-								c.setText(TMP3);
-							}
-							else throw new Exception();
-						}
-						catch (Throwable ex)
-						{
-							c.setText(file.getName());
-						}
-						if (isSelected)
-						{
-							c.setBackground(new Color(255,254,212));
-							c.setForeground(Color.BLACK);
-						}
-						else
-						{
-							c.setBackground(Color.WHITE);
-						}
-						return c;
-					}
-				});
-			}
-			
-			class MyPrivateMenuItem extends JMenuItem implements MouseListener
-			{
-				private int x;
-				public MyPrivateMenuItem(String str, int x)
-				{
-					super(str);
-					popupMenu.add(this);
-					this.setFont(f13);
-					this.setBackground(Color.WHITE);
-					this.addMouseListener(this);
-					this.x = x;
-				}
-				
 				@Override
 				public void mouseReleased(MouseEvent ev)
 				{
-					switch (x)
+					if (!ev.isPopupTrigger())
 					{
-						case 1: //delete
-						int array[] = getSelectedIndices();
-						i = 0;
-						if (array != null)
-						{
-							for (int x: array)
-							{
-								if (x >= 0)
-								{
-									TMP1 = (String)(lm.getElementAt(x-i));
-									lm.removeElementAt(x-i);
-									removeConfig(TMP1);
-									removeConfig(TMP1 + ".name");
-								}
-								i++;
-							}
-						}
-						break;
-						
-						case 2: //preferred name
-						i = getSelectedIndex();
-						if (i >= 0)
-						{
-							TMP2 = getConfig(lm.getElementAt(i) + ".name");
-							if (TMP2 != null)
-							{
-								TMP1 = (String)(JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, TMP2));
-							}
-							else
-							{
-								try
-								{
-									TMP1 = (String)(JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, (new File(getConfig(lm.getElementAt(i).toString()))).getName()));
-								}
-								catch (Exception ex)
-								{
-									TMP1 = JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE);
-								}
-							}
-							if (TMP1 != null)
-							{							
-								if (!TMP1.isEmpty())
-								{								
-									if (i >= 0)
-									{
-										writeConfig(lm.getElementAt(i) + ".name", TMP1);
-									}
-								}
-								else
-								{
-									removeConfig(lm.getElementAt(i) + ".name");
-								}
-							}
-						}
-						break;
+						JAppLaunch.this.setVisible(!JAppLaunch.this.isVisible());
 					}
 				}
-				
-				@Override
-				public void mouseEntered(MouseEvent ev)
-				{
-				}
-				
-				@Override
-				public void mouseExited(MouseEvent ev)
-				{
-				}
-				
-				@Override
-				public void mousePressed(MouseEvent ev)
-				{
-				}
-				
-				@Override
-				public void mouseClicked(MouseEvent ev)
-				{
-				}
-			}
-			
-			@Override
-			public void mouseReleased(MouseEvent ev)
+			});			
+			popup.add(new MyMenuItem("Show/Hide", 10));
+			popup.add(new MyMenuItem("About", "APPICON16", 6));
+			popup.add(new JPopupMenu.Separator());
+			popup.add(new MyMenuItem("Close", 5));
+			try
 			{
-				if (ev.getSource() instanceof JList)
-				{
-					if (ev.isPopupTrigger())
-					{
-						popupMenu.show((Component)(ev.getSource()), ev.getX(), ev.getY());
-					}
-				}
+				SystemTray.getSystemTray().add(trayIcon);
 			}
-			
-			@Override
-			public void mousePressed(MouseEvent ev)
-			{
-			}
-			
-			@Override
-			public void mouseClicked(MouseEvent ev)
-			{
-				if (ev.getSource() instanceof JList)
-				{
-					if ((ev.getClickCount() == 2)&&(!ev.isPopupTrigger()))
-					{
-						MyList list = (MyList)(ev.getSource());
-						i = list.getSelectedIndex();
-						if (i >= 0)
-						{
-							File f = new File(getConfig((String)(this.lm.getElementAt(i))));
-							try
-							{
-								openFile(f);
-								(new Thread()
-								{
-									@Override
-									public void run()
-									{
-										final JDialog window = new JDialog(w);
-										JLabel label = new JLabel("   Opening...   ");
-										label.setFont(f13);
-										window.setUndecorated(true);
-										window.getContentPane().setBackground(new Color(252,255,220));
-										window.getRootPane().setBorder(bord);
-										window.setLayout(new FlowLayout(FlowLayout.CENTER));
-										window.add(label);
-										window.pack();
-										window.setLocationRelativeTo(w);										
-										window.addWindowListener(new WindowAdapter()
-										{
-											@Override
-											public void windowDeactivated(WindowEvent ev)
-											{
-												window.dispose();
-											}
-										});
-										window.setVisible(true);
-										try
-										{
-											this.sleep(2000);
-										}
-										catch (Throwable ex)
-										{
-										}
-										window.dispose();
-										if (getConfig("isCloseAfterLaunch").equals("true"))
-										{
-											w.setVisible(false);
-										}
-									}
-								}).start();
-							}
-							catch (Throwable ex)
-							{
-								JOptionPane.showMessageDialog(w, "Cannot open " + f.getPath() + " !\nPlease make sure the path is correct and close portable mode if necessary.", "Error", JOptionPane.ERROR_MESSAGE);
-							}
-						}
-					}
-				}
-			}
-			
-			@Override
-			public void mouseEntered(MouseEvent ev)
-			{
-			}
-			
-			@Override
-			public void mouseExited(MouseEvent ev)
+			catch (Exception ex)
 			{
 			}
 		}
@@ -795,190 +347,183 @@ public class JAppLaunch extends JFrame
 			this.x = x;
 		}
 		
+		private MyMenuItem(String str, String icon, int x)
+		{
+			this(str,x);
+			this.setIcon(icon(icon));
+		}
+		
 		@Override
 		public void mouseReleased(MouseEvent ev)
 		{
-			if (this.x <= 3)
+			switch (x)
 			{
-				j = chooser.showOpenDialog(w);
-				if (j == JFileChooser.APPROVE_OPTION)
+				case 1: //add item
+				loadConfig();
+				int option = chooser.showOpenDialog(w);
+				if (option == JFileChooser.APPROVE_OPTION)
 				{
 					File file = chooser.getSelectedFile();
-					switch (x)
-					{
-						case 1:
-						k = getNextUsable("Programs");
-						writeConfig("Programs." + k, file.getPath());
-						tab1.list.lm.addElement("Programs." + k);
-						break;
-						
-						case 2:
-						k = getNextUsable("Files");
-						writeConfig("Files." + k, file.getPath());
-						tab2.list.lm.addElement("Programs." + k);
-						break;
-						
-						case 3:
-						k = getNextUsable("Others");
-						writeConfig("Others." + k, file.getPath());
-						tab3.list.lm.addElement("Programs." + k);
-						break;
-					}
+					MyTab tab = (MyTab)(tPane.getSelectedComponent());
+					String name = tab.getName();
+					int next = getNextUsable(name);
+					writeConfig0(name + "." + next, file.getPath());
+					tab.list.insert(name + "." + next);
 				}
-			}
-			else
-			{
-				switch (x)
+				break;
+				
+				case 2: //add tab
+				String name = JOptionPane.showInputDialog(JAppLaunch.this,"New tab name:","Input",JOptionPane.QUESTION_MESSAGE);
+				if (name != null)
 				{
-					case 4: //close to tray
-					w.setVisible(false);
-					break;
-					
-					case 5: //close
-					saveSizeAndLocation();
-					System.exit(0);
-					break;
-					
-					case 6: //about
-					JOptionPane.showMessageDialog(w, "JAppLaunch " + VERSION_NO + " -- a file launcher written in Java.\nBy tony200910041, http://tony200910041.wordpress.com\nDistributed under MPL 2.0.\n\nOfficial website: http://japplaunch.sourceforge.net/", "About JAppLaunch", JOptionPane.INFORMATION_MESSAGE);
-					break;
-					
-					case 7: //always on top
-					if (w.isAlwaysOnTop())
+					if (!name.isEmpty()&&(!tabNames.contains(name))&&(isUsableTypeName(name)))
 					{
-						w.setAlwaysOnTop(false);
-						writeConfig("OnTop", "false");
+						MyTab tab = new MyTab(name);
 					}
 					else
 					{
-						w.setAlwaysOnTop(true);
-						writeConfig("OnTop", "true");
+						JOptionPane.showMessageDialog(JAppLaunch.this, "The name \"" + name + "\" is invalid!", "Error", JOptionPane.ERROR_MESSAGE);
 					}
+				}
+				break;
+				
+				case 4: //close to tray
+				JAppLaunch.this.setVisible(false);
+				break;
+				
+				case 5: //close
+				JAppLaunch.this.saveSizeAndLocation();
+				System.exit(0);
+				break;
+				
+				case 6: //about
+				JAppLaunch.showAboutDialog();
+				break;
+				
+				case 7: //always on top
+				if (JAppLaunch.this.isAlwaysOnTop())
+				{
+					JAppLaunch.this.setAlwaysOnTop(false);
+					writeConfig0("Settings.OnTop", "false");
+				}
+				else
+				{
+					JAppLaunch.this.setAlwaysOnTop(true);
+					writeConfig0("Settings.OnTop", "true");
+				}
+				break;
+				
+				case 8: //look and feel
+				JDialog LAFOption = new JDialog(JAppLaunch.this);
+				LAFOption.setModal(true);
+				LAFOption.setTitle("Look and Feel option");
+				LAFOption.getContentPane().setBackground(Color.WHITE);
+				boolean DefaultL = false;
+				boolean WindowsL = false;
+				boolean Nimbus = false;
+				final String[] LAF = {getConfig0("Settings.LAF")};
+				if (LAF[0] == null)
+				{
+					LAF[0] = "Default";
+				}
+				switch (LAF[0])
+				{
+					case "Default":
+					DefaultL = true;
 					break;
 					
-					case 8: //look and feel
-					JDialog LAFOption = new JDialog(w);
-					LAFOption.setModal(true);
-					LAFOption.setTitle("Look and Feel option");
-					LAFOption.getContentPane().setBackground(Color.WHITE);
-					boolean DefaultL = false;
-					boolean WindowsL = false;
-					boolean Nimbus = false;
-					try
-					{
-						TMP1 = getConfig("LAF");
-						if (TMP1 == null) throw new Exception();
-					}
-					catch (Exception ex)
-					{
-						TMP1 = "Default";
-					}
-					finally
-					{
-						switch (TMP1)
-						{
-							case "Default":
-							DefaultL = true;
-							break;
-							
-							case "Windows":
-							WindowsL = true;
-							break;
-							
-							case "Nimbus":
-							Nimbus = true;
-							break;
-						}					
-					}
-					final MyRadioButton isDefaultL = new MyRadioButton("Use default Look and Feel", DefaultL, 1);
-					final MyRadioButton isWindowsL = new MyRadioButton("Use Windows Look and Feel", WindowsL, 2);
-					final MyRadioButton isNimbus = new MyRadioButton("Use Nimbus Look and Feel", Nimbus, 3);
-					ActionListener listener3 = new ActionListener()
-					{
-						public void actionPerformed(ActionEvent ev)
-						{
-							switch (((MyRadioButton)(ev.getSource())).getIndex())
-							{
-								case 1:
-								isDefaultL.setSelected(true);
-								isWindowsL.setSelected(false);
-								isNimbus.setSelected(false);
-								TMP1 = "Default";
-								break;
-								
-								case 2:
-								isDefaultL.setSelected(false);
-								isWindowsL.setSelected(true);
-								isNimbus.setSelected(false);
-								TMP1 = "Windows";
-								break;
-																
-								case 3:
-								isDefaultL.setSelected(false);
-								isWindowsL.setSelected(false);
-								isNimbus.setSelected(true);
-								TMP1 = "Nimbus";
-								break;
-							}
-						}
-					};
-					isDefaultL.addActionListener(listener3);
-					isWindowsL.addActionListener(listener3);
-					isNimbus.addActionListener(listener3);	
-					LAFOption.setLayout(new GridLayout(3,1,0,0));
-					LAFOption.add(isDefaultL);
-					LAFOption.add(isWindowsL);
-					LAFOption.add(isNimbus);
-					LAFOption.setSize(250,140);
-					LAFOption.setLocationRelativeTo(w);
-					LAFOption.setVisible(true);
-					writeConfig("LAF", TMP1);
-					JOptionPane.showMessageDialog(w, "The Look and Feel will be changed after restart.", "Done", JOptionPane.INFORMATION_MESSAGE);
+					case "Windows":
+					WindowsL = true;
 					break;
 					
-					case 9: //other settings
-					JDialog Settings = new JDialog(w);
-					Settings.setModal(true);
-					Settings.setTitle("Settings");
-					Settings.getContentPane().setBackground(Color.WHITE);
-					Settings.setLayout(new GridLayout(4,1,0,0));
-					Settings.setSize(250,160);
-					Settings.setLocationRelativeTo(w);
-					boolean Portable = true;
-					boolean CloseAfterLaunch = true;
-					try
-					{
-						Portable = getConfig("isPortable").equals("true");
-					}
-					catch (Throwable ex)
-					{
-					}
-					try
-					{
-						CloseAfterLaunch = getConfig("isCloseAfterLaunch").equals("true");
-					}
-					catch (Throwable ex)
-					{
-					}
-					MyRadioButton isConfirmDrag = new MyRadioButton("Confirm Drag", confirmDrag, 0);
-					MyRadioButton isPortable = new MyRadioButton("Replace drive letter", Portable, 1);
-					MyRadioButton isLoadIcon = new MyRadioButton("Load icon", Icon, 2);
-					MyRadioButton isCloseAfterLaunch = new MyRadioButton("Hide window after launching", CloseAfterLaunch, 3);
-					Settings.add(isConfirmDrag);
-					Settings.add(isPortable);
-					Settings.add(isLoadIcon);
-					Settings.add(isCloseAfterLaunch);
-					Settings.setVisible(true);
-					confirmDrag = isConfirmDrag.isSelected();
-					Icon = isLoadIcon.isSelected();
-					tab1.list.lm.fireContentsChanged();
-					writeConfig("ConfirmDrag", confirmDrag + "");
-					writeConfig("isPortable", isPortable.isSelected() + "");
-					writeConfig("isLoadIcon", Icon + "");
-					writeConfig("isCloseAfterLaunch", isCloseAfterLaunch.isSelected() + "");
+					case "Nimbus":
+					Nimbus = true;
 					break;
 				}
+				final MyRadioButton isDefaultL = new MyRadioButton("Use default Look and Feel", DefaultL, 1);
+				final MyRadioButton isWindowsL = new MyRadioButton("Use Windows Look and Feel", WindowsL, 2);
+				final MyRadioButton isNimbus = new MyRadioButton("Use Nimbus Look and Feel", Nimbus, 3);
+				ActionListener listener3 = new ActionListener()
+				{
+					public void actionPerformed(ActionEvent ev)
+					{
+						switch (((MyRadioButton)(ev.getSource())).getIndex())
+						{
+							case 1:
+							isDefaultL.setSelected(true);
+							isWindowsL.setSelected(false);
+							isNimbus.setSelected(false);
+							LAF[0] = "Default";
+							break;
+							
+							case 2:
+							isDefaultL.setSelected(false);
+							isWindowsL.setSelected(true);
+							isNimbus.setSelected(false);
+							LAF[0] = "Windows";
+							break;
+															
+							case 3:
+							isDefaultL.setSelected(false);
+							isWindowsL.setSelected(false);
+							isNimbus.setSelected(true);
+							LAF[0] = "Nimbus";
+							break;
+						}
+					}
+				};
+				isDefaultL.addActionListener(listener3);
+				isWindowsL.addActionListener(listener3);
+				isNimbus.addActionListener(listener3);	
+				LAFOption.setLayout(new GridLayout(3,1,0,0));
+				LAFOption.add(isDefaultL);
+				LAFOption.add(isWindowsL);
+				LAFOption.add(isNimbus);
+				LAFOption.setSize(250,140);
+				LAFOption.setLocationRelativeTo(JAppLaunch.this);
+				LAFOption.setVisible(true);
+				writeConfig0("Settings.LAF", LAF[0]);
+				JOptionPane.showMessageDialog(w, "The Look and Feel will be changed after restart.", "Done", JOptionPane.INFORMATION_MESSAGE);
+				break;
+				
+				case 9: //other settings
+				{
+					loadConfig();
+					JDialog setting = new JDialog(w);
+					setting.setModal(true);
+					setting.setTitle("Settings");
+					setting.getContentPane().setBackground(Color.WHITE);
+					setting.setLayout(new GridLayout(4,1,0,0));
+					setting.setSize(250,160);
+					setting.setLocationRelativeTo(w);
+					boolean Portable = getBoolean0("Settings.isPortable");
+					boolean CloseAfterLaunch = getBoolean0("Settings.isCloseAfterLaunch");
+					MyCheckBox isConfirmDrag = new MyCheckBox("Confirm Drag", confirmDrag);
+					MyCheckBox isPortable = new MyCheckBox("Replace drive letter", Portable);
+					MyCheckBox isLoadIcon = new MyCheckBox("Load icon", showIcon);
+					MyCheckBox isCloseAfterLaunch = new MyCheckBox("Hide window after launching", CloseAfterLaunch);
+					setting.add(isConfirmDrag);
+					setting.add(isPortable);
+					setting.add(isLoadIcon);
+					setting.add(isCloseAfterLaunch);
+					setting.setVisible(true);
+					//
+					confirmDrag = isConfirmDrag.isSelected();
+					showIcon = isLoadIcon.isSelected();
+					((MyTab)(tPane.getSelectedComponent())).list.lm.fireContentsChanged();
+					writeConfig0("Settings.ConfirmDrag", confirmDrag + "");
+					writeConfig0("Settings.isPortable", isPortable.isSelected() + "");
+					writeConfig0("Settings.isLoadIcon", showIcon + "");
+					writeConfig0("Settings.isCloseAfterLaunch", isCloseAfterLaunch.isSelected() + "");
+					
+				}
+				break;
+				
+				case 10:
+				JAppLaunch.this.setVisible(!JAppLaunch.this.isVisible());
+				break;
 			}
+			saveConfig();
 		}
 		
 		@Override
@@ -1008,73 +553,437 @@ public class JAppLaunch extends JFrame
 		{
 			super("System utilities");
 			this.setFont(f13);
-			this.add(new MyPrivateMenuItem("Cancel all shutdown task(s)", 1));
+			this.add(new MyWindowsMenuItem("Cancel all shutdown task(s)", 1));
 			this.add(new JSeparator());
-			this.add(new MyPrivateMenuItem("Registry editor", 2));
-			this.add(new MyPrivateMenuItem("Paint", 3));
-			this.add(new MyPrivateMenuItem("Clipboard", 4));
-			this.add(new MyPrivateMenuItem("Calculator", 5));
-			this.add(new MyPrivateMenuItem("Event viewer", 6));
-			this.add(new MyPrivateMenuItem("Control panel", 7));
-			this.add(new MyPrivateMenuItem("Task manager", 8));
+			this.add(new MyWindowsMenuItem("Registry editor", 2));
+			this.add(new MyWindowsMenuItem("Paint", 3));
+			this.add(new MyWindowsMenuItem("Clipboard", 4));
+			this.add(new MyWindowsMenuItem("Calculator", 5));
+			this.add(new MyWindowsMenuItem("Event viewer", 6));
+			this.add(new MyWindowsMenuItem("Control panel", 7));
+			this.add(new MyWindowsMenuItem("Task manager", 8));
 		}
 		
-		private class MyPrivateMenuItem extends JMenuItem implements MouseListener
+		private class MyWindowsMenuItem extends JMenuItem implements ActionListener
 		{
 			private int x;
-			public MyPrivateMenuItem(String str, int x)
+			public MyWindowsMenuItem(String str, int x)
 			{
 				super(str);
 				this.setForeground(Color.BLACK);
 				this.setBackground(Color.WHITE);
 				this.setFont(f13);
 				this.x = x;
+				this.addActionListener(this);
+			}
+			
+			@Override
+			public void actionPerformed(ActionEvent ev)
+			{
+				String cmd = null;
+				switch (this.x)
+				{
+					case 1:
+					cmd = "shutdown -a";
+					break;
+					
+					case 2:
+					cmd = "regedit";
+					break;
+					
+					case 3:
+					cmd = "mspaint";
+					break;
+					
+					case 4:
+					cmd = "clipbrd";
+					break;
+					
+					case 5:
+					cmd = "calc";
+					break;
+					
+					case 6:
+					cmd = "eventvwr";
+					break;
+					
+					case 7:
+					cmd = "control";
+					break;
+					
+					case 8:
+					cmd = "taskmgr";
+					break;
+				}
+				try
+				{
+					Runtime.getRuntime().exec(cmd);
+				}
+				catch (Exception ex)
+				{
+				}
+			}
+		}
+	}
+	
+	class MyStickMenu extends JMenu
+	{
+		MyStickMenu()
+		{
+			super("Stick to");
+			this.setFont(f13);
+			this.setBackground(Color.WHITE);
+			this.add(new MyStickMenuItem("Left",1));
+			this.add(new MyStickMenuItem("Right",2));
+		}
+		
+		private class MyStickMenuItem extends JMenuItem implements ActionListener
+		{
+			private int x;
+			private MyStickMenuItem(String str, int x)
+			{
+				super(str);
+				this.setFont(f13);
+				this.setBackground(Color.WHITE);
+				this.x = x;
+				this.addActionListener(this);
+			}
+			
+			@Override
+			public void actionPerformed(ActionEvent ev)
+			{
+				Rectangle env = GraphicsEnvironment.getLocalGraphicsEnvironment().getMaximumWindowBounds();
+				switch (this.x)
+				{
+					case 1: //left
+					JAppLaunch.this.setLocation(0,0);
+					JAppLaunch.this.setSize(280,env.height);
+					break;
+					
+					case 2: //right
+					JAppLaunch.this.setLocation(env.width-280,0);
+					JAppLaunch.this.setSize(280,env.height);
+					break;
+				}
+			}
+		}
+	}
+	
+	public void load()
+	{
+		/*
+		 * Load lists from properties file
+		 * assume that loadConfig() has been called
+		 */
+		File path = JAppLaunch.getJARPath();
+		while (path.getParentFile() != null)
+		{
+			path = path.getParentFile();
+		}
+		String lastDrive = getConfig0("Settings.LastDrive");
+		//path = root
+		ArrayList<String> list = new ArrayList<>();
+		/*
+		 * now retain related items
+		 */
+		Set<String> set1 = prop.stringPropertyNames();
+		for (String s: set1)
+		{
+			if (!(s.startsWith("Settings.")||s.startsWith("Grid.")))
+			{
+				list.add(s);
+			}
+		}
+		/*
+		 * remove special key for compatibility (version 1.4-)
+		 */
+		list.remove("Size.x");
+		list.remove("Size.y");
+		list.remove("Location.x");
+		list.remove("Location.y");
+		list.remove("OnTop");
+		list.remove("LAF");
+		list.remove("ConfirmDrag");
+		list.remove("isPortable");
+		list.remove("isLoadIcon");
+		list.remove("isCloseAfterLaunch");
+		list.remove("LastDrive");
+		Collections.sort(list, new StringComparator());
+		final boolean replaceDriveLetter = getBoolean0("Settings.isPortable");
+		for (ArrayList<String> set: JAppLaunch.categorize(list))
+		{
+			//now set has items of the same type
+			String first = set.get(0);
+			String type = first.substring(0,first.indexOf("."));
+			MyTab tab = null;
+			if (tabNames.contains(type))
+			{
+				//search
+				for (int i=0; i<tPane.getTabCount(); i++)
+				{
+					MyTab t = (MyTab)(tPane.getComponentAt(i));
+					if (t.getName().equals(type))
+					{
+						tab = t;
+						break;
+					}
+				}
+			}
+			else
+			{
+				//create new
+				tab = new MyTab(type);
+			}
+			for (ArrayList<String> l: split(set))
+			{
+				for (String item: l)
+				{
+					if (!item.endsWith("name"))
+					{
+						try
+						{
+							//replace drive letter
+							if (replaceDriveLetter)
+							{
+								if (!path.getPath().equals(lastDrive))
+								{
+									writeConfig0(item, getConfig0(item).replace(lastDrive, path.getPath()));
+								}
+							}
+						}
+						catch (Exception ex)
+						{
+						}
+						tab.list.lm.addElement(item);
+					}
+				}				
+			}
+		}
+		if (tPane.getTabCount() == 0)
+		{
+			//no items
+			MyTab tab = new MyTab("Programs");
+		}
+		writeConfig0("Settings.LastDrive", path.getPath());
+		saveConfig();
+	}
+	
+	static ArrayList<ArrayList<String>> categorize(ArrayList<String> set)
+	{
+		ArrayList<ArrayList<String>> _return = new ArrayList<>();
+		HashSet<String> types = new HashSet<>();
+		for (String s: set)
+		{
+			types.add(s.substring(0,s.indexOf(".")));
+		}
+		ArrayList<String> typeList = new ArrayList<>(types);
+		for (int i=0; i<typeList.size(); i++)
+		{
+			_return.add(new ArrayList<String>());
+		}
+		Collections.sort(typeList);
+		if (typeList.contains("Programs"))
+		{
+			typeList.remove("Programs");
+			typeList.add(0,"Programs");
+		}
+		//now add String to different ArrayList<String>
+		for (String s: set)
+		{
+			for (int i=0; i<typeList.size(); i++)
+			{
+				if (s.startsWith(typeList.get(i)))
+				{
+					_return.get(i).add(s);
+					break;
+				}
+			}
+		}
+		return _return;
+	}
+	
+	static ArrayList<ArrayList<String>> split(java.util.List<String> list)
+	{
+		//split to 2 lists: dir and file
+		ArrayList<String> l1 = new ArrayList<>();
+		ArrayList<String> l2 = new ArrayList<>();
+		for (String s: list)
+		{
+			if (new File(getConfig0(s)).isDirectory())
+			{
+				l1.add(s);
+			}
+			else l2.add(s);
+		}
+		ArrayList<ArrayList<String>> l = new ArrayList<>();
+		l.add(l1);
+		l.add(l2);
+		return l;
+	}
+	
+	class StringComparator implements Comparator<String>
+	{
+		@Override
+		public int compare(String str1, String str2)
+		{
+			String s1, s2;
+			if ((s1 = getConfig0(str1 + ".name")) == null)
+			{
+				s1 = (new File(getConfig0(str1))).getName();
+			}
+			if ((s2 = getConfig0(str2 + ".name")) == null)
+			{
+				s2 = (new File(getConfig0(str2))).getName();
+			}
+			return s1.compareTo(s2);
+		}
+	}
+	
+	class MyTab extends JPanel implements MouseListener
+	{
+		final MyList list = new MyList();		
+		final JPopupMenu popup = new JPopupMenu();
+		final JPanel base = new JPanel(new FlowLayout(FlowLayout.CENTER,2,0));
+		final MyLabel label;
+		String tabName;
+		public MyTab(String tabName)
+		{
+			this.setLayout(new BorderLayout());
+			this.setBackground(Color.WHITE);
+			this.setDropTarget(new MyDropTarget());
+			tPane.addTab(tabName, null, this, null);
+			this.add(new JScrollPane(list), BorderLayout.CENTER);
+			//create close popup
+			this.popup.add(new MyTabMenuItem("Close tab",-1));
+			this.popup.add(new MyTabMenuItem("Rename tab",-2));
+			this.popup.add(new MyTabMenuItem("Sort",-3));
+			base.setOpaque(false);
+			label = new MyLabel(tabName);			
+			base.add(label);
+			base.setFocusable(false);
+			base.addMouseListener(this);
+			tPane.setTabComponentAt(tPane.indexOfComponent(this),this.base);
+			//
+			this.tabName = tabName;
+			tabNames.add(tabName);
+		}
+		
+		@Override
+		public void mouseReleased(MouseEvent ev)
+		{
+			Object src = ev.getSource();
+			if (src instanceof JPanel)
+			{
+				if (ev.isPopupTrigger())
+				{					
+					this.popup.show(base,ev.getX(),ev.getY());					
+				}
+				else
+				{
+					/*
+					 * adding MouseListener will disable tab swap
+					 * so implements it manually
+					 */
+					if (ev.getClickCount() == 1)
+					{
+						MouseEvent me = SwingUtilities.convertMouseEvent(base,ev,tPane);
+						tPane.getMouseListeners()[0].mousePressed(me);
+					}
+					else
+					{
+						//rename
+						new MyTabMenuItem("",-2).actionPerformed(null);
+					}
+				}
+			}
+		}
+		
+		public String getName()
+		{
+			return this.tabName;
+		}
+		
+		public void setName(String name)
+		{
+			this.tabName = name;
+			this.label.setText(name);
+			tPane.repaint();
+		}
+		
+		class MyList extends JList<String> implements MouseListener
+		{
+			private final MyListModel lm = new MyListModel();
+			private final JPopupMenu popupMenu = new JPopupMenu();
+			private class MyListModel extends DefaultListModel<String>
+			{
+				public MyListModel()
+				{
+					super();
+				}
+				
+				public void fireContentsChanged()
+				{
+					this.fireContentsChanged(list, 0, this.size());
+				}
+			}			
+			public MyList()
+			{
+				super();
+				this.setModel(lm);
+				this.setFixedCellHeight(22);
+				this.popupMenu.add(new MyTabMenuItem("Delete", 1));
+				this.popupMenu.add(new MyTabMenuItem("Set preferred name", 2));
+				this.popupMenu.add(new MyTabMenuItem("Set parameters", 3));
+				this.popupMenu.add(new MyTabMenuItem("Show path",4));
 				this.addMouseListener(this);
+				this.setDragEnabled(true);
+				this.setCellRenderer(new DefaultListCellRenderer()
+				{
+					@Override
+					public Component getListCellRendererComponent(JList list, Object value, int index, boolean isSelected, boolean cellHasFocus)
+					{
+						JLabel c = (JLabel)(super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus));
+						c.setFont(f13);
+						File file = new File(getConfig0((String)value));
+						// load icon
+						if (showIcon)
+						{
+							c.setIcon(getIcon16(file));
+						}
+						// load preferred name
+						String s;
+						if ((s = getConfig0(value + ".name")) != null)
+						{
+							c.setText(s);
+						}
+						else
+						{
+							c.setText(file.getName());
+						}
+						// selected/not selected
+						if (isSelected)
+						{
+							c.setBackground(new Color(255,254,212));
+							c.setForeground(Color.BLACK);
+						}
+						else
+						{
+							c.setBackground(Color.WHITE);
+						}
+						return c;
+					}
+				});
 			}
 			
 			@Override
 			public void mouseReleased(MouseEvent ev)
 			{
-				switch (this.x)
+				if (ev.getSource() instanceof JList)
 				{
-					case 1:
-					TMP1 = "shutdown -a";
-					break;
-					
-					case 2:
-					TMP1 = "regedit";
-					break;
-					
-					case 3:
-					TMP1 = "mspaint";
-					break;
-					
-					case 4:
-					TMP1 = "clipbrd";
-					break;
-					
-					case 5:
-					TMP1 = "calc";
-					break;
-					
-					case 6:
-					TMP1 = "eventvwr";
-					break;
-					
-					case 7:
-					TMP1 = "control";
-					break;
-					
-					case 8:
-					TMP1 = "taskmgr";
-					break;
-				}
-				try
-				{
-					Runtime.getRuntime().exec(TMP1);
-				}
-				catch (Exception ex)
-				{
+					if (ev.isPopupTrigger())
+					{
+						popupMenu.show((Component)(ev.getSource()), ev.getX(), ev.getY());
+					}
 				}
 			}
 			
@@ -1086,6 +995,68 @@ public class JAppLaunch extends JFrame
 			@Override
 			public void mouseClicked(MouseEvent ev)
 			{
+				if (ev.getSource() instanceof JList)
+				{
+					if ((ev.getClickCount() == 2)&&(!ev.isPopupTrigger()))
+					{
+						MyList list = (MyList)(ev.getSource());
+						int i = list.getSelectedIndex();
+						if (i >= 0)
+						{
+							loadConfig();
+							String f = (String)(this.lm.getElementAt(i));
+							try
+							{
+								launch(f);
+								(new Thread()
+								{
+									/*
+									 * small "opening" window
+									 */
+									@Override
+									public void run()
+									{
+										final JDialog window = new JDialog(JAppLaunch.this);
+										JLabel label = new JLabel("   Opening...   ");
+										label.setFont(f13);
+										window.setUndecorated(true);
+										window.getContentPane().setBackground(new Color(252,255,220));
+										window.getRootPane().setBorder(bord1);
+										window.setLayout(new FlowLayout(FlowLayout.CENTER));
+										window.add(label);
+										window.pack();
+										window.setLocationRelativeTo(w);										
+										window.addWindowListener(new WindowAdapter()
+										{
+											@Override
+											public void windowDeactivated(WindowEvent ev)
+											{
+												window.dispose();
+											}
+										});
+										window.setVisible(true);
+										try
+										{
+											this.sleep(2000);
+										}
+										catch (Throwable ex)
+										{
+										}
+										window.dispose();
+										if (getBoolean0("Settings.isCloseAfterLaunch"))
+										{
+											JAppLaunch.this.setVisible(false);
+										}
+									}
+								}).start();
+							}
+							catch (Exception ex)
+							{
+								JOptionPane.showMessageDialog(JAppLaunch.this, "Cannot open " + getConfig0(f) + " !\nPlease make sure the path is correct and close portable mode if necessary.", "Error", JOptionPane.ERROR_MESSAGE);
+							}
+						}
+					}
+				}
 			}
 			
 			@Override
@@ -1097,6 +1068,263 @@ public class JAppLaunch extends JFrame
 			public void mouseExited(MouseEvent ev)
 			{
 			}
+			
+			void sort()
+			{
+				ArrayList<String> _list = Collections.list(this.lm.elements());
+				Collections.sort(_list, new StringComparator());
+				ArrayList<ArrayList<String>> lists = split(_list);
+				lm.removeAllElements();
+				for (ArrayList<String> list: lists)
+				{
+					for (String str: list)
+					{
+						lm.addElement(str);
+					}
+				}
+				this.repaint();
+			}
+			
+			void insert(String s)
+			{
+				ArrayList<String> list = Collections.list(this.lm.elements());
+				list.add(s);
+				Collections.sort(list, new StringComparator());
+				ArrayList<ArrayList<String>> lists = split(list);
+				//
+				ArrayList<String> list0 = lists.get(0);
+				list0.addAll(lists.get(1));
+				int index = list0.indexOf(s);
+				this.lm.add(index, s);
+				this.setSelectedIndex(index);
+				this.ensureIndexIsVisible(index);
+			}
+		}
+		
+		class MyTabMenuItem extends JMenuItem implements ActionListener
+		{
+			private int x;
+			public MyTabMenuItem(String str, int x)
+			{
+				super(str);
+				this.setFont(f13);
+				this.setBackground(Color.WHITE);
+				this.addActionListener(this);
+				this.x = x;
+			}
+			
+			@Override
+			public void actionPerformed(ActionEvent ev)
+			{
+				loadConfig();
+				switch (x)
+				{
+					case -1: //remove tab
+					{
+						int option = JOptionPane.showConfirmDialog(JAppLaunch.this,"<html>This will close the tab " + MyTab.this.tabName + " and all links will be <b>removed</b>.<br>Continue?</html>","Confirm",JOptionPane.YES_NO_OPTION);
+						if (option == JOptionPane.YES_OPTION)
+						{
+							//now remove tab and properties
+							tPane.remove(MyTab.this);
+							tPane.repaint();
+							loadConfig();
+							for (String key: prop.stringPropertyNames())
+							{
+								if (key.startsWith(MyTab.this.tabName))
+								{
+									removeConfig0(key);
+								}
+							}
+							saveConfig();
+						}
+						break;
+					}
+					
+					case -2: //rename tab
+					{
+						String input = (String)(JOptionPane.showInputDialog(JAppLaunch.this, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, MyTab.this.tabName));
+						if (input != null)
+						{
+							if ((!input.isEmpty())&&(isUsableTypeName(input)))
+							{
+								loadConfig();
+								ArrayList<String> elements = Collections.list(MyTab.this.list.lm.elements());
+								MyTab.this.list.lm.removeAllElements();
+								//replace properties
+								for (String key: prop.stringPropertyNames())
+								{
+									if (key.startsWith(MyTab.this.tabName))
+									{
+										String newKey = key.replace(MyTab.this.tabName,input);
+										writeConfig0(newKey, removeConfig0(key));
+									}
+								}
+								//add back elements
+								for (String key: elements)
+								{
+									MyTab.this.list.lm.addElement(key.replace(MyTab.this.tabName,input));
+								}
+								saveConfig();
+								MyTab.this.setName(input);
+								MyTab.this.repaint();
+							}
+							else
+							{
+								JOptionPane.showMessageDialog(JAppLaunch.this, "The name \"" + input + "\" is invalid!", "Error", JOptionPane.ERROR_MESSAGE);
+							}
+						}
+					}
+					break;
+					
+					case -3: //sort					
+					MyTab.this.list.sort();
+					break;
+					
+					case 1: //delete
+					{
+						int array[] = MyTab.this.list.getSelectedIndices();
+						int i = 0;
+						if (array != null)
+						{
+							for (int x: array)
+							{
+								if (x >= 0)
+								{
+									String item = (String)(MyTab.this.list.lm.getElementAt(x-i));
+									MyTab.this.list.lm.removeElementAt(x-i);
+									removeConfig0(item);
+									removeConfig0(item + ".name");
+									removeConfig0(item + ".parameters");
+								}
+								i++;
+							}
+						}
+					}
+					break;
+					
+					case 2: //preferred name
+					{
+						int i = MyTab.this.list.getSelectedIndex();
+						if (i >= 0)
+						{
+							String item = getConfig0(MyTab.this.list.lm.getElementAt(i) + ".name");
+							if (item == null)
+							{
+								item = getConfig0(MyTab.this.list.lm.getElementAt(i));
+								if (item != null)
+								{
+									item = new File(item).getName();
+								}
+							}
+							String input = (String)(JOptionPane.showInputDialog(JAppLaunch.this, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, item));
+							if (input != null)
+							{							
+								if (!input.isEmpty())
+								{								
+									if (i >= 0)
+									{
+										writeConfig0(MyTab.this.list.lm.getElementAt(i) + ".name", input);
+									}
+								}
+								else
+								{
+									removeConfig0(MyTab.this.list.lm.getElementAt(i) + ".name");
+								}
+							}
+						}
+						MyTab.this.list.lm.fireContentsChanged();
+					}
+					break;
+					
+					case 3: //parameters
+					{
+						String key = MyTab.this.list.getSelectedValue() + ".parameters";
+						String input = (String)JOptionPane.showInputDialog(JAppLaunch.this, "Please enter the parameters:", "Set parameters", JOptionPane.QUESTION_MESSAGE, null, null, getConfig0(key));
+						if (input != null)
+						{
+							writeConfig0(key,input);
+						}
+					}
+					break;
+					
+					case 4: //show path
+					{
+						String key = MyTab.this.list.getSelectedValue();
+						String path = getConfig0(key);
+						String par = getConfig0(key + ".parameters");
+						String name = getConfig0(key + ".name");
+						JOptionPane.showMessageDialog(JAppLaunch.this,"Name: " + (name==null?(new File(path).getName()):name) + "\nPath: " + path + (par!=null?((par.isEmpty()?"":"\nParameters: ")+par):""),"Information",JOptionPane.INFORMATION_MESSAGE);
+					}
+					break;
+				}
+				saveConfig();
+			}
+		}
+		
+		class MyDropTarget extends DropTarget
+		{
+			public MyDropTarget()
+			{
+				super();
+			}
+			
+			@Override
+			public synchronized void drop(DropTargetDropEvent dtde)
+			{
+				loadConfig();
+				dtde.acceptDrop(DnDConstants.ACTION_COPY_OR_MOVE);			
+				try
+				{
+					java.util.List list = (java.util.List)(dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor));
+					for (Object obj: list)
+					{
+						if (obj instanceof File)
+						{
+							File file = (File)obj;
+							MyTab tab = (MyTab)(tPane.getSelectedComponent());
+							String typeName = tab.getName();
+							int option;
+							if (confirmDrag)
+							{
+								option = JOptionPane.showConfirmDialog(JAppLaunch.this, "Add " + file.getPath() + " to " + typeName + "?", "Confirm", JOptionPane.YES_NO_OPTION);
+							}
+							else option = JOptionPane.YES_OPTION;
+							if (option == JOptionPane.YES_OPTION)
+							{
+								int next = getNextUsable(typeName);
+								writeConfig0(typeName + "." + next, file.getPath());
+								writeConfig0(typeName + "." + next + ".name", file.getName());
+								removeConfig0(typeName + "." + next + ".parameters");
+								tab.list.insert(typeName + "." + next);
+							}
+						}
+					}
+					saveConfig();
+				}
+				catch (Exception ex)
+				{
+				}
+			}
+		}
+		
+		@Override
+		public void mouseEntered(MouseEvent ev)
+		{
+		}
+		
+		@Override
+		public void mouseExited(MouseEvent ev)
+		{
+		}
+		
+		@Override
+		public void mousePressed(MouseEvent ev)
+		{
+		}
+		
+		@Override
+		public void mouseClicked(MouseEvent ev)
+		{
 		}
 	}
 	
@@ -1104,117 +1332,127 @@ public class JAppLaunch extends JFrame
 	{
 		private int x;
 		private final JPopupMenu popupMenu = new JPopupMenu();
-		private final MyPrivateMenuItem item1 = new MyPrivateMenuItem("Delete", 1);
-		private final MyPrivateMenuItem item2 = new MyPrivateMenuItem("Set tooltip text", 2);
 		public MyGrid(int x)
 		{
 			this.setFont(f13);
-			this.setBorder(bord);
+			this.setBorder(bord1);
 			this.setFocusable(false);
 			this.setBackground(Color.WHITE);
-			this.setPreferredSize(new Dimension(50,50));
-			gridPanel.add(this);
+			this.setPreferredSize(new Dimension(50,50));			
 			this.addMouseListener(this);
-			item1.addMouseListener(this);
-			item2.addMouseListener(this);
 			this.x = x;
-			TMP1 = getConfig("Grid." + this.x);
+			popupMenu.add(new MyGridMenuItem("Delete", 1));
+			popupMenu.add(new MyGridMenuItem("Set tooltip text", 2));
+			popupMenu.add(new MyGridMenuItem("Set parameters", 3));
+			popupMenu.add(new MyGridMenuItem("Show path",4));
+			this.loadToolTipText();
+			this.setDropTarget(new MyDropTarget());
+			//
 			try
 			{
-				TMP2 = getConfig("Grid." + this.x + ".name");
-				if (TMP2 == null) throw new Exception();
+				this.setIcon(getIcon32(new File(getConfig0("Grid." + this.x))));
 			}
 			catch (Exception ex)
 			{
-				try
-				{
-					TMP2 = (new File(getConfig("Grid." + this.x))).getName();
-				}
-				catch (Exception ex2)
-				{
-					TMP2 = null;
-				}
+				this.setIcon(null);
 			}
-			finally
-			{
-				this.setToolTipText(TMP2);
-			}
-			if (TMP1 != null)
-			{
-				if (!TMP1.isEmpty())
-				{
-					try
-					{
-						this.setIcon(getIcon32(new File(getConfig("Grid." + this.x))));
-					}
-					catch (Exception ex)
-					{
-					}
-				}
-			}
-			this.setDropTarget(new MyDropTarget(this.x));
 		}
 		
-		@Override
-		public void setToolTipText(String str)
+		public void loadToolTipText()
 		{
-			if (str != null)
+			loadConfig();
+			String tooltip = getConfig0("Grid." + this.x + ".name");
+			if (tooltip == null)
 			{
-				if (str.isEmpty())
+				String fileName = getConfig0("Grid." + this.x);
+				if (fileName != null)
 				{
-					try
-					{
-						TMP1 = getConfig("Grid." + this.x + ".name");
-						if (TMP1 == null) throw new Exception();
-					}
-					catch (Exception ex)
-					{
-						try
-						{
-							TMP1 = (new File(getConfig("Grid." + this.x))).getName();
-						}
-						catch (Exception ex2)
-						{
-							TMP1 = null;
-						}
-					}
-					super.setToolTipText(TMP1);
+					tooltip = (new File(fileName)).getName();
 				}
 				else
 				{
-					super.setToolTipText(str);
+					tooltip = getConfig0("Grid." + this.x);
 				}
 			}
-			else
-			{
-				super.setToolTipText(null);
-			}
+			super.setToolTipText(tooltip);
 		}
 		
-		private class MyPrivateMenuItem extends JMenuItem
+		private class MyGridMenuItem extends JMenuItem implements ActionListener
 		{
-			private int x;
-			public MyPrivateMenuItem(String str, int x)
+			private int index;
+			public MyGridMenuItem(String str, int index)
 			{
 				super(str);
 				this.setFont(f13);
 				this.setBackground(Color.WHITE);
-				popupMenu.add(this);
-				this.x = x;
+				this.addActionListener(this);
+				this.index = index;
 			}
 			
-			int index()
+			@Override
+			public void actionPerformed(ActionEvent ev)
 			{
-				return this.x;
+				loadConfig();
+				switch (this.index)
+				{
+					case 1: //delete
+					MyGrid.this.setIcon(null);
+					removeConfig0("Grid." + MyGrid.this.x);
+					removeConfig0("Grid." + MyGrid.this.x + ".name");
+					removeConfig0("Grid." + MyGrid.this.x + ".parameters");
+					MyGrid.this.setToolTipText(null);
+					break;
+					
+					case 2: //tooltiptext
+					{
+						String input = (String)(JOptionPane.showInputDialog(JAppLaunch.this, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, MyGrid.this.getToolTipText()));
+						if (input != null)
+						{
+							if (input.isEmpty())
+							{
+								removeConfig0("Grid." + MyGrid.this.x + ".name");								
+							}
+							else
+							{
+								writeConfig0("Grid." + MyGrid.this.x + ".name", input);
+							}
+							//have to saveConfig() before loading tooltip text
+							saveConfig();
+							MyGrid.this.loadToolTipText();
+						}
+					}
+					break;
+					
+					case 3: //parameter
+					{
+						String key = "Grid." + MyGrid.this.x + ".parameters";
+						String input = (String)JOptionPane.showInputDialog(JAppLaunch.this, "Please enter the parameters:", "Set parameters", JOptionPane.QUESTION_MESSAGE, null, null, getConfig0(key));
+						if (input != null)
+						{
+							writeConfig0(key, input);
+						}
+					}
+					break;
+					
+					case 4: //show path
+					{
+						String key = "Grid." + MyGrid.this.x;
+						String path = getConfig0(key);
+						String par = getConfig0(key + ".parameters");
+						String name = getConfig0(key + ".name");
+						JOptionPane.showMessageDialog(JAppLaunch.this,"Name: " + (name==null?(new File(path).getName()):name) + "\nPath: " + path + (par!=null?((par.isEmpty()?"":"\nParameters: ")+par):""),"Information",JOptionPane.INFORMATION_MESSAGE);
+					}
+					break;
+				}
+				saveConfig();
 			}
 		}
 		
 		private class MyDropTarget extends DropTarget
 		{
-			private int x;
-			public MyDropTarget(int x)
+			public MyDropTarget()
 			{
-				this.x = x;
+				super();
 			}
 			
 			@Override
@@ -1224,16 +1462,20 @@ public class JAppLaunch extends JFrame
 				try
 				{
 					File file = (File)(((java.util.List)(dtde.getTransferable().getTransferData(DataFlavor.javaFileListFlavor))).get(0));
-					i = JOptionPane.showConfirmDialog(w, "Set " + file.getPath() + " to this grid?\nNote that the current shotcut will be overriden.", "Confirm", JOptionPane.YES_NO_OPTION);
-					if (i == JOptionPane.YES_OPTION)
+					int option = JOptionPane.showConfirmDialog(JAppLaunch.this, "Set " + file.getPath() + " to this grid?\nNote that the current shotcut will be overriden.", "Confirm", JOptionPane.YES_NO_OPTION);
+					if (option == JOptionPane.YES_OPTION)
 					{
-						writeConfig("Grid." + x, file.getPath());
-						setIcon(getIcon32(file));
-						setToolTipText(file.getName());
+						writeConfig0("Grid." + MyGrid.this.x, file.getPath());
+						writeConfig0("Grid." + MyGrid.this.x + ".name", file.getName());
+						writeConfig0("Grid." + MyGrid.this.x + ".parameters", "");
+						saveConfig();
+						MyGrid.this.setIcon(getIcon32(file));
+						MyGrid.this.loadToolTipText();						
 					}
 				}
-				catch (Throwable ex)
+				catch (Exception ex)
 				{
+					ex.printStackTrace();
 				}
 			}
 		}
@@ -1246,28 +1488,34 @@ public class JAppLaunch extends JFrame
 			{
 				if (ev.isPopupTrigger())
 				{
-					popupMenu.show((JButton)(comp), ev.getX(), ev.getY());
+					popupMenu.show((JButton)comp, ev.getX(), ev.getY());
 				}
 				else
-				{
-					if (getConfig("Grid." + this.x) == null)
+				{					
+					if (getConfig0("Grid." + this.x) == null)
 					{
-						i = chooser.showOpenDialog(w);
-						if (i == JFileChooser.APPROVE_OPTION)
+						/*
+						 * set file to grid
+						 */
+						int option = chooser.showOpenDialog(JAppLaunch.this);
+						if (option == JFileChooser.APPROVE_OPTION)
 						{
 							File f = chooser.getSelectedFile();
-							writeConfig("Grid." + this.x, f.getPath());
-							this.setIcon(getIcon32(f));
-							setToolTipText(f.getName());
+							loadConfig();
+							writeConfig0("Grid." + this.x, f.getPath());
+							MyGrid.this.setIcon(getIcon32(f));
+							MyGrid.this.loadToolTipText();
+							saveConfig();
 						}
 					}
 					else
 					{
-						File f = new File(getConfig("Grid." + this.x));
+						String f = "Grid." + MyGrid.this.x;
 						try
 						{
-							openFile(f);
+							launch(f);
 							final JButton button = (JButton)(ev.getSource());
+							//animation
 							(new Thread()
 							{
 								@Override
@@ -1275,16 +1523,17 @@ public class JAppLaunch extends JFrame
 								{
 									try
 									{
-										for (i=0; i<3; i++)
+										for (int i=0; i<3; i++)
 										{
 											this.sleep(500);
-											button.setBackground(new Color(1,125,129));
+											button.setBackground(darkGreen);
 											this.sleep(500);
 											button.setBackground(Color.WHITE);
 										}
-										if (getConfig("isCloseAfterLaunch").equals("true"))
+										if (getBoolean0("isCloseAfterLaunch"))
 										{
-											w.setVisible(false);
+											this.sleep(500);
+											JAppLaunch.this.setVisible(false);
 										}
 									}
 									catch (Throwable ex)
@@ -1296,59 +1545,9 @@ public class JAppLaunch extends JFrame
 						}
 						catch (Exception ex)
 						{
-							JOptionPane.showMessageDialog(w, "Cannot open " + f.getPath() + " !\nPlease make sure the path is correct and close portable mode if necessary.", "Error", JOptionPane.ERROR_MESSAGE);
+							JOptionPane.showMessageDialog(JAppLaunch.this, "Cannot open " + getConfig0(f) + " !\nPlease make sure the path is correct and close portable mode if necessary.", "Error", JOptionPane.ERROR_MESSAGE);
 						}
 					}
-				}
-			}
-			else if (comp instanceof MyPrivateMenuItem)
-			{
-				switch (((MyPrivateMenuItem)comp).index())
-				{
-					case 1:
-					this.setIcon(null);
-					removeConfig("Grid." + this.x);
-					removeConfig("Grid." + this.x + ".name");
-					this.setToolTipText(null);
-					break;
-					
-					case 2:
-					TMP2 = getConfig("Grid." + this.x + ".name");
-					if (TMP2 != null)
-					{
-						TMP1 = (String)(JOptionPane.showInputDialog(w, "Please enter the tooltip text:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, TMP2));
-					}
-					else
-					{
-						try
-						{
-							TMP1 = (String)(JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, (new File(getConfig("Grid." + this.x))).getName()));
-						}
-						catch (Exception ex)
-						{
-							TMP1 = JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE);
-						}
-					}
-					if (TMP1 != null)
-					{
-						if (TMP1.isEmpty())
-						{
-							removeConfig("Grid." + this.x + ".name");
-							try
-							{
-								this.setToolTipText((new File(getConfig("Grid." + this.x))).getName());
-							}
-							catch (Exception ex)
-							{
-							}
-						}
-						else
-						{
-							writeConfig("Grid." + this.x + ".name", TMP1);
-							this.setToolTipText(TMP1);
-						}
-					}
-					break;
 				}
 			}
 		}
@@ -1376,150 +1575,122 @@ public class JAppLaunch extends JFrame
 		}
 	}
 	
-	public void initialize()
-	{
-		if (!SettingsFile.exists())
-		{
-			try
-			{
-				PrintWriter writer = new PrintWriter(SettingsFile, "UTF-8");
-				writer.close();
-				writeConfig("Size.x", "280");
-				writeConfig("Size.y", "700");
-				writeConfig("Location.x", "0");
-				writeConfig("Location.y", "0");
-				writeConfig("OnTop", "false");
-				writeConfig("LAF", "Default");
-				writeConfig("ConfirmDrag", "true");
-				writeConfig("isPortable", "false");
-				writeConfig("isLoadIcon", "true");
-				writeConfig("isCloseAfterLaunch", "true");
-			}
-			catch (Exception ex)
-			{
-			}
-		}
-	}
-	
-	class MyRadioButton extends JRadioButton
-	{
-		private int x;
-		public MyRadioButton(String str, boolean isSelected, int x)
-		{
-			super(str, isSelected);
-			this.setFont(f13);
-			this.setBackground(Color.WHITE);
-			this.setFocusable(false);
-			this.x = x;
-		}
-		
-		public int getIndex()
-		{
-			return this.x;
-		}
-	}
-	
 	public void saveSizeAndLocation()
 	{
-		writeConfig("Size.x", w.getSize().getWidth() + "");
-		writeConfig("Size.y", w.getSize().getHeight() + "");
-		writeConfig("Location.x", w.getLocation().getX() + "");
-		writeConfig("Location.y", w.getLocation().getY() + "");
+		loadConfig();
+		Dimension d = this.getSize();
+		Point p = this.getLocation();
+		writeConfig0("Settings.Size.x", d.width + "");
+		writeConfig0("Settings.Size.y", d.height + "");
+		writeConfig0("Settings.Location.x", p.x + "");
+		writeConfig0("Settings.Location.y", p.y + "");
+		saveConfig();
 	}
 	
 	public void setSizeAndLocation()
 	{
-		this.setMinimumSize(new Dimension(280,700));
+		//size
+		this.setMinimumSize(new Dimension(280,500));
+		int width=0,height=0;
 		try
 		{
-			i = (int)Double.parseDouble(getConfig("Size.x"));
-			j = (int)Double.parseDouble(getConfig("Size.y"));
-			if (i > WIDTH)
-			{
-				i = WIDTH;
-			}		
-			if (j > HEIGHT)
-			{
-				j = HEIGHT;
-			}
+			width = (int)Double.parseDouble(getConfig0("Settings.Size.x"));
+			height = (int)Double.parseDouble(getConfig0("Settings.Size.y"));
+			width = Math.max(Math.min(width,WIDTH),280);
+			height = Math.max(Math.min(height,HEIGHT),500);			
 		}
 		catch (Exception ex)
 		{
+			width = 280;
+			height = 500;
 		}
-		if ((i>=280)&&(j>=700))
+		finally
 		{
-			this.setSize(i, j);
+			this.setSize(width, height);
 		}
-		else
-		{
-			this.setSize(280,700);
-		}
-		
 		//location
 		try
 		{
-			k = (int)Double.parseDouble(getConfig("Location.x"));
-			l = (int)Double.parseDouble(getConfig("Location.y"));
-			if ((k+i) > WIDTH)
-			{
-				k = WIDTH-i;
-			}
-			if ((l+j) > HEIGHT)
-			{
-				l = HEIGHT-j;
-			}
+			int x = (int)Double.parseDouble(getConfig0("Settings.Location.x"));
+			int y = (int)Double.parseDouble(getConfig0("Settings.Location.y"));
+			x = Math.max(0,Math.min(x,WIDTH-width));
+			y = Math.max(0,Math.min(y,WIDTH-width));
+			this.setLocation(x,y);
 		}
 		catch (Exception ex)
 		{
-		}	
-		if ((k>=0)&&(l>=0))
-		{
-			this.setLocation(k, l);
+			this.setLocation(0,0);
 		}
-		else
-		{
-			this.setLocation(0, 0);
-		}
-		//ontop
-		try
-		{
-			this.setAlwaysOnTop(getConfig("OnTop").equals("true"));
-		}
-		catch (Exception ex)
-		{
-			this.setAlwaysOnTop(true);
-		}
-		//confirm drag
-		try
-		{
-			confirmDrag = !(getConfig("ConfirmDrag").equals("false"));
-		}
-		catch (Exception ex)
-		{
-			confirmDrag = true;
-		}
+		//
+		this.setAlwaysOnTop(getBoolean0("Settings.OnTop"));
+		confirmDrag = getBoolean0("Settings.ConfirmDrag");
 	}
 	
-	public ImageIcon getIcon32(File f)
+	public static Icon getIcon32(File f)
 	{
 		try
 		{
-			return new ImageIcon(ShellFolder.getShellFolder(f).getIcon(true));
+			/*
+			 * a hack using reflection
+			 * sun.awt.shell.ShellFolder is internal proprietary API
+			 * may be removed in a future release
+			 * may not be portable between different platform
+			 */
+			Class<?> c = Class.forName("sun.awt.shell.ShellFolder");
+			Method m1 = c.getDeclaredMethod("getShellFolder",File.class);
+			Object o1 = m1.invoke(null,f);
+			Method m2 = o1.getClass().getDeclaredMethod("getIcon",boolean.class);
+			m2.setAccessible(true);
+			Object o2 = m2.invoke(o1,true);
+			return new ImageIcon((Image)o2);
 		}
 		catch (Exception ex)
 		{
-			return null;
+			return getIcon16(f);
 		}
 	}
 	
-	public Icon getIcon16(File f)
+	public static Icon getIcon16(File f)
 	{
 		return FileSystemView.getFileSystemView().getSystemIcon(f);
 	}
 	
-	public void openFile(File f) throws IOException
+	public static void openFile(File f) throws IOException
 	{
 		Desktop.getDesktop().open(f);
+	}
+	
+	public static void launch(String key) throws IOException
+	{
+		loadConfig();
+		String value = getConfig0(key);
+		String par = getConfig0(key + ".parameters");
+		if (par == null)
+		{
+			openFile(new File(value));
+		}
+		else if (par.isEmpty())
+		{
+			openFile(new File(value));
+		}
+		else
+		{
+			new ProcessBuilder(value,par).start();
+		}
+	}
+	
+	public static void showAboutDialog()
+	{
+		Icon ico;
+		try
+		{
+			ico = icon("APPICON48");
+		}
+		catch (Exception ex)
+		{
+			ico = null;
+		}
+		JOptionPane.showMessageDialog(w, "JAppLaunch " + VERSION_NO + " -- a file launcher written in Java.\nBy tony200910041, http://tony200910041.wordpress.com\nDistributed under MPL 2.0.\nOfficial website: http://japplaunch.sourceforge.net/", "About JAppLaunch", JOptionPane.INFORMATION_MESSAGE, ico);
 	}
 	
 	public static File getJARPath()
@@ -1534,50 +1705,107 @@ public class JAppLaunch extends JFrame
 		}
 	}
 	
-	public int getNextUsable(String name)
+	public static int getNextUsable(String name)
 	{
-		java.util.List list = Collections.list(prop.propertyNames());
-		for (i=0; i<list.size(); i++)
+		ArrayList list = Collections.list(prop.propertyNames());
+		int i=0;
+		while (true)
 		{
 			if (!list.contains(name + "." + i)) return i;
+			else i++;
 		}
-		return i;
+	}
+	
+	public static boolean isUsableTypeName(String name)
+	{
+		ArrayList<String> reserved = new ArrayList<>(14);
+		reserved.add("Programs");
+		reserved.add("Grid");
+		reserved.add("Settings");
+		reserved.add("Size.x");
+		reserved.add("Size.y");
+		reserved.add("Location.x");
+		reserved.add("Location.y");
+		reserved.add("OnTop");
+		reserved.add("LAF");
+		reserved.add("ConfirmDrag");
+		reserved.add("isPortable");
+		reserved.add("isLoadIcon");
+		reserved.add("isCloseAfterLaunch");
+		reserved.add("LastDrive");
+		return !reserved.contains(name);
+	}
+	
+	public static ImageIcon icon(String name)
+	{
+		return new ImageIcon(JAppLaunch.class.getResource("myjava/SRC/" + name + ".PNG"));
+	}
+	
+	public static Image img(String name)
+	{
+		return icon(name).getImage();
+	}
+	
+	public static void loadConfig()
+	{
+		try
+		{
+			prop.load(new FileInputStream(settingFile));
+		}
+		catch (Exception ex)
+		{
+		}
+	}
+	
+	public static String getConfig0(String name)
+	{
+		return prop.getProperty(name);
+	}
+	
+	public static boolean getBoolean0(String name)
+	{
+		return ("true").equals(getConfig0(name));
+	}
+	
+	public static void writeConfig0(String key, String value)
+	{
+		prop.setProperty(key, value);
+	}
+	
+	public static String removeConfig0(String key)
+	{
+		return (String)(prop.remove(key));
+	}
+	
+	public static void saveConfig()
+	{
+		try
+		{
+			prop.store(new FileOutputStream(settingFile), null);
+		}
+		catch (Exception ex)
+		{
+			ex.printStackTrace();
+		}
+	}	
+	/*
+	 * direct method:
+	 */
+	public static boolean getBoolean(String name)
+	{
+		loadConfig();
+		return getBoolean0(name);
 	}
 	
 	public static String getConfig(String name)
 	{
-		try
-		{
-			prop.load(new FileInputStream(SettingsFile));
-			return prop.getProperty(name);
-		}
-		catch (Exception ex)
-		{
-			return null;
-		}
+		loadConfig();
+		return getConfig0(name);
 	}
 	
-	public static void writeConfig(String key, String value)
+	public static void writeConfig(String key, String name)
 	{
-		prop.setProperty(key, value);
-		try
-		{
-			prop.store(new FileOutputStream(SettingsFile), null);
-		}
-		catch (Exception ex)
-		{
-		}
-	}
-	
-	public static void removeConfig(String key)
-	{
-		prop.remove(key);
-		try
-		{
-			prop.store(new FileOutputStream(SettingsFile), null);
-		}
-		catch (Exception ex)
-		{
-		}
+		writeConfig0(key,name);
+		saveConfig();
 	}
 }

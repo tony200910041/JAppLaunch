@@ -1,2 +1,2 @@
 Main-Class: JAppLaunch
-SplashScreen-Image: myjava/src/Splash.gif
+SplashScreen-Image: myjava/SRC/Splash.gif
