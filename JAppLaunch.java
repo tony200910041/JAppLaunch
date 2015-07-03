@@ -12,7 +12,7 @@ import MyJava.GUI.*;
 
 public class JAppLaunch extends JFrame
 {
-	private static final float VERSION_NO = (float)1.0;
+	private static final float VERSION_NO = (float)1.1;
 	private static final Font f13 = new Font("Microsoft Jhenghei", Font.PLAIN, 13);
 	private static final Border bord = new LineBorder(Color.BLACK, 1);
 	
@@ -232,6 +232,16 @@ public class JAppLaunch extends JFrame
 		gridPanel.setLayout(new GridLayout(2,4,5,5));
 		topPanel.add(gridPanel, BorderLayout.CENTER);
 		this.add(topPanel, BorderLayout.PAGE_START);
+		
+		//load icon
+		try
+		{
+			Icon = !(getConfig("isLoadIcon").equals("false"));
+		}
+		catch (Exception ex)
+		{
+			Icon = true;
+		}
 		
 		restoreGrid();
 		load();
@@ -455,13 +465,27 @@ public class JAppLaunch extends JFrame
 		
 		class MyList extends JList implements MouseListener
 		{
-			final DefaultListModel lm = new DefaultListModel();
+			MyListModel lm = new MyListModel();
 			private final JPopupMenu popupMenu = new JPopupMenu();
 			final MyPrivateMenuItem item = new MyPrivateMenuItem("Delete", 1);
 			final MyPrivateMenuItem item2 = new MyPrivateMenuItem("Set preferred name", 2);
+			class MyListModel extends DefaultListModel
+			{
+				public MyListModel()
+				{
+					super();
+				}
+				
+				public void fireContentsChanged()
+				{
+					this.fireContentsChanged(list, 0, this.size());
+				}
+			};
+			
 			public MyList()
 			{
 				super();
+				final MyList list = this;
 				this.setModel(lm);
 				this.addMouseListener(this);
 				this.setDragEnabled(true);
@@ -527,7 +551,7 @@ public class JAppLaunch extends JFrame
 				{
 					switch (x)
 					{
-						case 1:
+						case 1: //delete
 						int array[] = getSelectedIndices();
 						i = 0;
 						if (array != null)
@@ -546,21 +570,39 @@ public class JAppLaunch extends JFrame
 						}
 						break;
 						
-						case 2:
-						TMP1 = JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE);
-						if (TMP1 != null)
+						case 2: //preferred name
+						i = getSelectedIndex();
+						if (i >= 0)
 						{
-							i = getSelectedIndex();
-							if (!TMP1.isEmpty())
-							{								
-								if (i >= 0)
-								{
-									writeConfig(lm.getElementAt(i) + ".name", TMP1);
-								}
+							TMP2 = getConfig(lm.getElementAt(i) + ".name");
+							if (TMP2 != null)
+							{
+								TMP1 = (String)(JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, TMP2));
 							}
 							else
 							{
-								removeConfig(lm.getElementAt(i) + ".name");
+								try
+								{
+									TMP1 = (String)(JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE, null, null, (new File(getConfig(lm.getElementAt(i).toString()))).getName()));
+								}
+								catch (Exception ex)
+								{
+									TMP1 = JOptionPane.showInputDialog(w, "Please enter the preferred name:", "Set preferred name", JOptionPane.QUESTION_MESSAGE);
+								}
+							}
+							if (TMP1 != null)
+							{							
+								if (!TMP1.isEmpty())
+								{								
+									if (i >= 0)
+									{
+										writeConfig(lm.getElementAt(i) + ".name", TMP1);
+									}
+								}
+								else
+								{
+									removeConfig(lm.getElementAt(i) + ".name");
+								}
 							}
 						}
 						break;
@@ -865,7 +907,7 @@ public class JAppLaunch extends JFrame
 					}
 					MyRadioButton isConfirmDrag = new MyRadioButton("Confirm Drag", confirmDrag, 0);
 					MyRadioButton isPortable = new MyRadioButton("Replace drive letter", Portable, 1);
-					MyRadioButton isLoadIcon = new MyRadioButton("Load icon (require restart)", Icon, 2);
+					MyRadioButton isLoadIcon = new MyRadioButton("Load icon", Icon, 2);
 					MyRadioButton isCloseAfterLaunch = new MyRadioButton("Hide window after launching", CloseAfterLaunch, 3);
 					Settings.add(isConfirmDrag);
 					Settings.add(isPortable);
@@ -874,6 +916,7 @@ public class JAppLaunch extends JFrame
 					Settings.setVisible(true);
 					confirmDrag = isConfirmDrag.isSelected();
 					Icon = isLoadIcon.isSelected();
+					tab1.list.lm.fireContentsChanged();
 					writeConfig("ConfirmDrag", confirmDrag + "");
 					writeConfig("isPortable", isPortable.isSelected() + "");
 					writeConfig("isLoadIcon", Icon + "");
@@ -1180,15 +1223,6 @@ public class JAppLaunch extends JFrame
 		catch (Exception ex)
 		{
 			confirmDrag = true;
-		}
-		//load icon
-		try
-		{
-			Icon = !(getConfig("isLoadIcon").equals("false"));
-		}
-		catch (Exception ex)
-		{
-			Icon = true;
 		}
 	}
 	
